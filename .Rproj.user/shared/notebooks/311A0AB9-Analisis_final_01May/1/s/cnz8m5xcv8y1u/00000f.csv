@@ -1,0 +1,6 @@
+"0","#Multivariable fragilidad"
+"0",""
+"0","# Perfil"
+"0","modelo_per_f_m <- glm(fragilidad ~ Clase_Latente + edad + sexo + adherente_total, data = df_modelos, family = binomial)"
+"0","tbl_per_f_m <- tbl_regression(modelo_per_f_m, exponentiate = TRUE)"
+"0","tbl_per_f_m "

@@ -1,0 +1,7 @@
+"0","library(gtsummary); library(dplyr); library(tidyr)"
+"0","df_modelos <- datos_2[, c(""edad"", ""sexo"", ""adherente_total"", ""Clase_Latente"", ""grupo_enfermedades"", ""grupo_iis"", ""controlado"", "
+"0","                       ""fragilidad"", ""marcha_alterada"", ""apoyo_alterado"")]"
+"0",""
+"0","df_modelos$sexo <- as.factor(df_modelos$sexo)"
+"0","df_modelos$sexo <- factor(df_modelos$sexo, labels = c(""Hombre"", ""Mujer""))"
+"0",""

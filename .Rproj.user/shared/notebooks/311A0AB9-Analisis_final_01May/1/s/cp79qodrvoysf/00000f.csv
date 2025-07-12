@@ -1,0 +1,6 @@
+"0","#Univariados apoyo"
+"0",""
+"0","# Perfil"
+"0","modelo_per_a <- glm(apoyo_alterado ~ Clase_Latente, data = df_modelos, family = binomial)"
+"0","tbl_per_a <- tbl_regression(modelo_per_a, exponentiate = TRUE)"
+"0","tbl_per_a "

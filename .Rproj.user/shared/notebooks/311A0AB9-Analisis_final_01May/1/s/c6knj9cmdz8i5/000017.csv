@@ -1,0 +1,10 @@
+"0",""
+"0","# Indice"
+"0",""
+"0","dca_iis_c <- dca(controlado ~ prob_predicha_iis_m, "
+"0","    data = df_modelos, "
+"0","    thresholds = seq(0.20, 0.40, by = 0.01))"
+"2","Assuming '1' is [Event] and '0' is [non-Event]
+"
+"0","    "
+"0","plot(dca_iis_c, smooth = TRUE)"

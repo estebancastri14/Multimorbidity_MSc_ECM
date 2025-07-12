@@ -1,0 +1,72 @@
+"0","# Cargar librerías necesarias"
+"0","library(dplyr)"
+"0","library(summarytools)"
+"0","library(dplyr)"
+"0","library(table1)"
+"2","Warning:"
+"2"," package ‘table1’ was built under R version 4.3.3
+"
+"2","
+Attaching package: ‘table1’
+
+"
+"2","The following objects are masked from ‘package:summarytools’:
+
+    label, label<-
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    units, units<-
+
+"
+"0","library(rcompanion)"
+"2","Warning:"
+"2"," package ‘rcompanion’ was built under R version 4.3.3
+"
+"2","Registered S3 method overwritten by 'data.table':
+  method           from
+  print.data.table     
+"
+"0","# Cargar el archivo"
+"0","library(readr)"
+"0","df_multimorbilidad <- read_csv(""D:/esteb/Documents/Posgrado/Analisis/df_enfermedades_r.csv"")"
+"1","[1mRows: [22m[34m621[39m [1mColumns: [22m[34m21[39m
+"
+"1","[36m──[39m [1mColumn specification[22m [36m────────────────────────────────────────────────────────────────────────────────[39m
+[1mDelimiter:[22m "",""
+[32mdbl[39m (21): record_id, diabetes, hta, erc, epoc, scc, ecv, dislip, icc, obesidad, osteoporosis, fibri_...
+"
+"1","
+[36mℹ[39m Use `spec()` to retrieve the full column specification for this data.
+[36mℹ[39m Specify the column types or set `show_col_types = FALSE` to quiet this message.
+"
+"0","df_multimorbilidad_2 <- read_csv(""D:/esteb/Documents/Posgrado/Analisis/df_completo.csv"")"
+"1","[1mRows: [22m[34m621[39m [1mColumns: [22m[34m79[39m
+"
+"1","[36m──[39m [1mColumn specification[22m [36m────────────────────────────────────────────────────────────────────────────────[39m
+[1mDelimiter:[22m "",""
+[32mdbl[39m (79): record_id, edad, sexo, escolaridad, ocupacion, peso, talla, imc, tabaquismo, ind_gro_ingre...
+"
+"1","
+[36mℹ[39m Use `spec()` to retrieve the full column specification for this data.
+[36mℹ[39m Specify the column types or set `show_col_types = FALSE` to quiet this message.
+"
+"0","View(df_multimorbilidad)"
+"0",""
+"0","datos <- df_multimorbilidad[,2:21]"
+"0","datos_2 <- df_multimorbilidad_2[,2:79]"
+"0",""
+"0","datos$grupo_poco_prevalente <- ifelse("
+"0","  datos$artritis_reumatoide == 1 | datos$les == 1 |"
+"0","  datos$asma == 1 | datos$saos == 1 | datos$eap == 1 | datos$osteoporosis == 1 |"
+"0","  datos$gota == 1 | datos$hipertir == 1,"
+"0","  1, 0"
+"0",")"
+"0",""
+"0","# Convertir 0 → 1 y 1 → 2, y transformar a factor"
+"0","datos[] <- lapply(datos, function(x) {"
+"0","  x <- ifelse(x == 0, 1, 2)  # cambio de codificación"
+"0","  factor(x, levels = c(1, 2))  # asegurar que es factor con niveles correctos"
+"0","})"
+"0",""

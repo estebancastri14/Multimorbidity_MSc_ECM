@@ -1,0 +1,6 @@
+"0","#Univariados fragilidad"
+"0",""
+"0","# Perfil"
+"0","modelo_per_f <- glm(fragilidad ~ Clase_Latente, data = df_modelos, family = binomial)"
+"0","tbl_per_f <- tbl_regression(modelo_per_f, exponentiate = TRUE)"
+"0","tbl_per_f "

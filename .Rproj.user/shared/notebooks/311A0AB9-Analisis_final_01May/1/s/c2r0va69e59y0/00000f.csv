@@ -1,0 +1,42 @@
+"0","library(pROC)"
+"2","Warning:"
+"2"," package ‘pROC’ was built under R version 4.3.3
+"
+"2","Type 'citation(""pROC"")' for a citation.
+"
+"2","
+Attaching package: ‘pROC’
+
+"
+"2","The following objects are masked from ‘package:stats’:
+
+    cov, smooth, var
+
+"
+"0","# Curva 1"
+"0","roc_per_m <- roc(df_modelos$controlado, modelo_per_m$fitted.values)"
+"2","Setting levels: control = 0, case = 1
+"
+"2","Setting direction: controls < cases
+"
+"0","ci.auc(roc_per_m)"
+"1","95"
+"1",""
+"1","% CI: "
+"1","0.5957"
+"1",""
+"1",""
+"1",""
+"1","-"
+"1",""
+"1","0.6829"
+"1",""
+"1",""
+"1"," (DeLong)
+"
+"0","plot(roc_per_m,"
+"0","     legacy.axes = TRUE,"
+"0","     percent = TRUE,"
+"0","     ylab = ""Sensibilidad"","
+"0","     xlab = ""1 - Especificidad"","
+"0","     col = ""darkblue"", lwd = 2, grid = TRUE)"

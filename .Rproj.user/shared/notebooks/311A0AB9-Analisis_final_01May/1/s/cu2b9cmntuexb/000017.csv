@@ -1,0 +1,16 @@
+"0",""
+"0","# Indice"
+"0",""
+"0","dca_iis_ma_m <- dca(marcha_alterada ~ prob_predicha_iis_ma_m, "
+"0","    data = df_modelos, "
+"0","    thresholds = seq(0, 0.20, by = 0.01))"
+"2","Assuming '1' is [Event] and '0' is [non-Event]
+"
+"0","    "
+"0","plot(dca_iis_ma_m, smooth = TRUE)"
+"2","Warning in sqrt(sum.squares/one.delta) :"
+"2"," Se han producido NaNs
+"
+"2","Warning in sqrt(sum.squares/one.delta) :"
+"2"," Se han producido NaNs
+"

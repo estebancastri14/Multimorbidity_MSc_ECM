@@ -1,0 +1,2 @@
+"0","library(CalibrationCurves)"
+"0","calPerf = val.prob.ci.2(df_modelos$prob_predicha_per_m, df_modelos$controlado)"

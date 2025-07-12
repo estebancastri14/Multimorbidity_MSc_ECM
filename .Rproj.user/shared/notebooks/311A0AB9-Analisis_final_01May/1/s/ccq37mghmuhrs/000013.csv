@@ -1,0 +1,5 @@
+"0",""
+"0","# Indice"
+"0","modelo_iis_ma_m <- glm(marcha_alterada ~ grupo_iis + edad + sexo + adherente_total, data = df_modelos, family = binomial)"
+"0","tbl_iis_ma_m <- tbl_regression(modelo_iis_ma_m, exponentiate = TRUE)"
+"0","tbl_iis_ma_m"

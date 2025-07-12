@@ -1,0 +1,9 @@
+"0",""
+"0","# Grafico en conjunto"
+"0",""
+"0","dca_control <- dca(controlado ~ prob_predicha_per_m + prob_predicha_cont_m + prob_predicha_iis_m, "
+"0","    data = df_modelos, "
+"0","    thresholds = seq(0.20, 0.40, by = 0.01))"
+"2","Assuming '1' is [Event] and '0' is [non-Event]
+"
+"0","plot(dca_control, smooth = TRUE)"

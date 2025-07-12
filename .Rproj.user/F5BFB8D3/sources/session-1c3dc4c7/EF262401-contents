@@ -1,0 +1,1354 @@
+---
+title: "Trabajo de grado MSc"
+author: "Esteban Castrillón Martínez"
+date: "2025-02-21"
+output: html_document
+---
+
+## Exploración
+```{r}
+# Cargar librerías necesarias
+library(dplyr)
+library(summarytools)
+library(dplyr)
+library(tableone)
+library(kableExtra)
+library(sjPlot)
+library(table1)
+
+# Cargar el archivo
+library(readr)
+#df_multimorbilidad <- read_csv("D:/esteb/Documents/Posgrado/Analisis/df_enfermedades_r.csv")
+df_multimorbilidad_2 <- read_csv("D:/esteb/Documents/Posgrado/Analisis/df_completo.csv")
+View(df_multimorbilidad)
+
+
+
+#datos <- df_multimorbilidad[,2:21]
+datos <- df_multimorbilidad_2[,2:79]
+datos_2 <- df_multimorbilidad_2[,2:79]
+datos_3 <- df_multimorbilidad_2[,2:79]
+
+
+#datos[] <- lapply(datos, function(x) {
+ # if (is.numeric(x)) as.factor(x) else x
+#})
+
+
+library(dplyr)
+
+# Lista de variables a transformar
+vars <- c("diabetes", "hta", "erc", "epoc", "scc", "ecv", "dislip", "icc", "obesidad", "fibri_auricular", "hipotir", "hipertir", "osteoartritis", "artritis_reumatoide", "les", "asma", "eap", "saos", "gota")
+
+# Aplicar transformación
+datos <- datos %>%
+  mutate(across(all_of(vars), ~ factor(.x, labels = c("No", "Si"))))
+
+datos$sexo <- as.factor(datos$sexo)
+datos$sexo <- factor(datos$sexo, labels = c("Hombre", "Mujer"))
+
+datos$escolaridad <- as.factor(datos$escolaridad)
+datos$escolaridad <- factor(datos$escolaridad, labels = c("Primaria", "Bachillerato", "Técnico", "Universitario"))
+
+datos$ocupacion <- as.factor(datos$ocupacion)
+datos$ocupacion <- factor(datos$ocupacion, labels = c("Empleado", "Independiente", "Ama de casa", "Pensionado", "Desempleado", "Jubilado"))
+
+datos$tabaquismo <- as.factor(datos$tabaquismo)
+datos$tabaquismo <- factor(datos$tabaquismo, labels = c("Actual", "Antecedente", "No"))
+
+dfSummary(datos, 
+          plain.ascii  = FALSE, 
+          style        = "grid", 
+          graph.magnif = 0.75, 
+          valid.col    = FALSE)
+
+view(dfSummary(datos, 
+          plain.ascii  = FALSE, 
+          style        = "grid", 
+          graph.magnif = 0.75, 
+          valid.col    = FALSE))
+
+
+table1(~ edad + factor(sexo) + factor(escolaridad) + factor(ocupacion) + imc + factor(tabaquismo) + ind_gro_ingreso + marcha_ingreso + apoyo_ingreso + factor(diabetes) + factor(hta) + factor(erc) + factor(epoc) + factor(scc) + factor(ecv) + factor(dislip) + factor(icc) + factor(obesidad) + factor(fibri_auricular) + factor(hipotir) + factor(hipertir) + factor(osteoartritis) + factor(artritis_reumatoide) + factor(les) + factor(asma) + factor(eap) + factor(saos) + factor(gota), data=datos)
+
+```
+
+
+## Variables de exposición
+## Perfiles (Prueba 1)
+```{r}
+# Cargar librerías necesarias
+library(data.table)
+library(poLCA)  # Para análisis de clases latentes
+library(ggplot2)
+
+#datos[] <- lapply(datos, function(x) {
+ # if (is.numeric(x)) as.factor(x) else x
+#})
+
+# Identificar el rango de columnas desde "diabetes" hasta "gota"
+col_inicio <- which(names(datos) == "diabetes")
+col_fin <- which(names(datos) == "gota")
+
+# Seleccionar solo las columnas de enfermedades para el análisis
+df_lca <- datos[, col_inicio:col_fin, with=FALSE]
+
+# Convertir a factor 
+df_lca[] <- lapply(df_lca, factor)
+
+# Definir la fórmula para poLCA
+formula_lca <- as.formula(paste("cbind(", paste(names(df_lca), collapse = ", "), ") ~ 1"))
+
+# Evaluar modelos con 2 a 10 clases
+bic_values <- c()
+aic_values <- c()
+lmr_pvalues <- c()
+lca_models <- list()
+
+for (k in 2:10) {
+  set.seed(123)  # Para reproducibilidad
+  
+  # Ajustar el modelo con K clases
+  lca_model <- poLCA(formula_lca, data = df_lca, nclass = k, maxiter = 5000, nrep = 10, na.rm = FALSE)
+  
+  # Guardar el modelo
+  lca_models[[k]] <- lca_model
+  
+  # Guardar los valores de BIC y AIC
+  bic_values[k] <- lca_model$bic
+  aic_values[k] <- lca_model$aic
+  
+  # Calcular la prueba de razón de verosimilitud (LMR) si K > 2
+  if (k > 2) {
+    lmr_test <- -2 * (lca_models[[k-1]]$llik - lca_model$llik)
+    lmr_pvalue <- pchisq(lmr_test, df = lca_models[[k-1]]$df - lca_model$df, lower.tail = FALSE)
+    lmr_pvalues[k] <- lmr_pvalue
+  }
+}
+
+# Crear un dataframe con los criterios de selección
+model_selection <- data.frame(
+  Classes = 2:10,
+  BIC = bic_values[2:10],
+  AIC = aic_values[2:10],
+  LMR_PValue = c(NA, lmr_pvalues[3:10])  # LMR no se calcula para el modelo de 2 clases
+)
+
+# Seleccionar el mejor modelo con base en los criterios
+best_model_index <- which.min(model_selection$BIC)
+best_model <- lca_models[[best_model_index + 1]]
+
+# Asignar cada paciente a una clase latente
+datos$Clase_Latente <- best_model$predclass
+
+datos$Clase_Latente
+
+# Mostrar la tabla con los resultados de selección de modelos
+print(model_selection)
+
+# Visualizar los criterios de selección del modelo
+model_selection_melt <- melt(model_selection, id.vars = "Classes")
+
+ggplot(model_selection_melt, aes(x = Classes, y = value, color = variable)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  labs(title = "Criterios de Selección de Modelos LCA", x = "Número de Clases", y = "Valor del Criterio") +
+  scale_color_manual(values = c("red", "blue", "green")) +
+  theme(legend.title = element_blank())
+
+## Grafico
+library(reshape2)
+
+# Extraer las probabilidades posteriores del mejor modelo
+posterior_probs <- best_model$probs
+
+# Convertir la lista de probabilidades a un formato largo (tidy)
+lca_plot_data <- melt(posterior_probs, level = 2)
+
+# Crear gráfico de barras de probabilidades condicionales
+ggplot(lca_plot_data, aes(x = L2, y = value, fill = Var2)) +
+  geom_bar(stat = "identity", position = "stack") +
+  facet_grid(Var1 ~ .) +
+  scale_fill_brewer(type="seq", palette="Greys") +
+  theme_bw() +
+  labs(x = "Variables manifiestas (enfermedades)", 
+       y = "Probabilidad de respuesta",
+       fill = "Respuesta") +
+  theme(axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid.major.y=element_blank()) + 
+  guides(fill = guide_legend(reverse=TRUE))
+
+datos$Clase_Latente <- as.numeric(datos$Clase_Latente)
+datos$Clase_Latente <- as.factor(datos$Clase_Latente)
+
+datos_2$clase <- datos$Clase_Latente
+
+table(datos$Clase_Latente)
+
+table1(~ edad + factor(sexo) + factor(escolaridad) + factor(ocupacion) + imc + factor(tabaquismo) + ind_gro_ingreso + marcha_ingreso + apoyo_ingreso + factor(diabetes) + factor(hta) + factor(erc) + factor(epoc) + factor(scc) + factor(ecv) + factor(dislip) + factor(icc) + factor(obesidad) + factor(fibri_auricular) + factor(hipotir) + factor(hipertir) + factor(osteoartritis) + factor(artritis_reumatoide) + factor(les) + factor(asma) + factor(eap) + factor(saos) + factor(gota) | Clase_Latente, data=datos)
+
+```
+
+## Conteo
+```{r}
+# Identificar el rango de columnas desde "diabetes" hasta "gota"
+col_inicio_2 <- which(names(datos_2) == "diabetes")
+col_fin_2 <- which(names(datos_2) == "gota")
+
+# Calcular el número de enfermedades por paciente
+datos_2$Numero_Enfermedades <- rowSums(datos_2[, col_inicio_2:col_fin_2, with=FALSE])
+
+datos_2 <- datos_2 %>%
+  mutate(grupo_enfermedades = case_when(
+    Numero_Enfermedades <= 1 ~ "0-1 enfermedades",
+    Numero_Enfermedades >= 2 ~ "2 o más enfermedades",
+    TRUE                     ~ NA_character_
+  ))
+
+# Convertir a factor
+datos_2$grupo_enfermedades <- factor(datos_2$grupo_enfermedades, 
+                                   levels = c("0-1 enfermedades", "2 o más enfermedades"))
+
+table(datos_2$grupo_enfermedades)
+
+# Lista de variables a transformar
+vars <- c("diabetes", "hta", "erc", "epoc", "scc", "ecv", "dislip", "icc", "obesidad", "fibri_auricular", "hipotir", "hipertir", "osteoartritis", "artritis_reumatoide", "les", "asma", "eap", "saos", "gota")
+
+# Aplicar transformación
+datos_2 <- datos_2 %>%
+  mutate(across(all_of(vars), ~ factor(.x, labels = c("No", "Si"))))
+
+datos_2$sexo <- as.factor(datos_2$sexo)
+datos_2$sexo <- factor(datos_2$sexo, labels = c("Hombre", "Mujer"))
+
+datos_2$escolaridad <- as.factor(datos_2$escolaridad)
+datos_2$escolaridad <- factor(datos_2$escolaridad, labels = c("Primaria", "Bachillerato", "Técnico", "Universitario"))
+
+datos_2$ocupacion <- as.factor(datos_2$ocupacion)
+datos_2$ocupacion <- factor(datos_2$ocupacion, labels = c("Empleado", "Independiente", "Ama de casa", "Pensionado", "Desempleado", "Jubilado"))
+
+datos_2$tabaquismo <- as.factor(datos_2$tabaquismo)
+datos_2$tabaquismo <- factor(datos_2$tabaquismo, labels = c("Actual", "Antecedente", "No"))
+
+table1(~ edad + factor(sexo) + factor(escolaridad) + factor(ocupacion) + imc + factor(tabaquismo) + ind_gro_ingreso + marcha_ingreso + apoyo_ingreso + factor(diabetes) + factor(hta) + factor(erc) + factor(epoc) + factor(scc) + factor(ecv) + factor(dislip) + factor(icc) + factor(obesidad) + factor(fibri_auricular) + factor(hipotir) + factor(hipertir) + factor(osteoartritis) + factor(artritis_reumatoide) + factor(les) + factor(asma) + factor(eap) + factor(saos) + factor(gota) | grupo_enfermedades, data=datos_2)
+
+```
+
+## Indice
+```{r}
+datos_2 <- datos_2 %>%
+  mutate(grupo_iis = case_when(
+    puntaje_iis == 0              ~ "No enfermo",
+    puntaje_iis >= 1 & puntaje_iis <= 2 ~ "Levemente enfermo",
+    puntaje_iis >= 3 & puntaje_iis <= 5 ~ "Moderadamente enfermo",
+    puntaje_iis >= 6              ~ "Gravemente enfermo",
+    TRUE                          ~ NA_character_  # Para valores faltantes o no válidos
+  ))
+
+# Convertir a variable tipo factor con orden
+datos_2$grupo_iis <- factor(datos_2$grupo_iis, 
+                          levels = c("No enfermo", "Levemente enfermo", 
+                                     "Moderadamente enfermo", "Gravemente enfermo"))
+
+# Visualizar tabla de frecuencias por grupo
+table(datos_2$grupo_iis)
+
+table1(~ edad + factor(sexo) + factor(escolaridad) + factor(ocupacion) + imc + factor(tabaquismo) + ind_gro_ingreso + marcha_ingreso + apoyo_ingreso + factor(diabetes) + factor(hta) + factor(erc) + factor(epoc) + factor(scc) + factor(ecv) + factor(dislip) + factor(icc) + factor(obesidad) + factor(fibri_auricular) + factor(hipotir) + factor(hipertir) + factor(osteoartritis) + factor(artritis_reumatoide) + factor(les) + factor(asma) + factor(eap) + factor(saos) + factor(gota) | grupo_iis, data=datos_2)
+```
+
+
+
+
+## Desenlace control
+
+```{r}
+# Identificar columnas
+columnas_enfermedades <- which(names(datos_3) %in% c("diabetes","hta","erc","epoc","scc","ecv","dislip","icc","obesidad","osteoporosis",
+                     "fibri_auricular","hipotir","hipertir","osteoartritis","artritis_reumatoide","les","asma",
+                     "eap","saos","gota")) 
+columnas_ctrl <- which(names(datos_3) %in% c("ctrl_diabetes","ctrl_hta","ctrl_erc","ctrl_epoc","ctrl_scc","ctrl_ecv","ctrl_dislip","ctrl_icc","ctrl_obesidad","ctrl_osteo","ctrl_fa","ctrl_hipotir","ctrl_hipertir","ctrl_osteoartritis","ctrl_artritis_reuma","ctrl_les","ctrl_asma","ctrl_eap","ctrl_saos","ctrl_gota")) 
+
+# Crear la variable dependiente
+datos_3 <- datos_3 %>%
+  rowwise() %>%
+  mutate(
+    controlado = ifelse(
+      all(across(
+        all_of(names(datos_3)[columnas_ctrl])[across(all_of(names(datos_3)[columnas_enfermedades])) == 1],
+        ~ .x == 1
+      )),
+      1,
+      0
+    )
+  ) %>%
+  ungroup()
+
+datos_2$controlado <- datos_3$controlado
+datos_2$controlado
+
+table(datos_3$controlado)
+
+
+```
+
+
+## Desenlaces funcionalidad
+
+```{r}
+# Crear nuevas variables categorizadas
+datos_2 <- datos_2 %>%
+  mutate(
+    fragilidad = ifelse(ind_gro_final >= 5, 1, ifelse(ind_gro_final <= 4, 0, NA)),
+    marcha_alterada = ifelse(marcha_final <= 0.60, 1, ifelse(marcha_final >= 0.61, 0, NA)),
+    apoyo_alterado = ifelse(apoyo_final <= 10, 1, ifelse(apoyo_final >= 11, 0, NA))
+  )
+
+table(datos_2$marcha_alterada)
+table(datos_2$fragilidad)
+table(datos_2$apoyo_alterado)
+
+```
+
+
+## Regresión
+
+```{r}
+## Variables convertidas
+
+df_model <- datos_2[, c("edad", "sexo", "clase","grupo_enfermedades", "grupo_iis", "controlado", 
+                       "fragilidad", "marcha_alterada", "apoyo_alterado")]
+
+df_model$grupo_iis <- as.factor(df_model$grupo_iis)
+
+df_model$sexo <- as.factor(df_model$sexo)
+df_model$sexo <- factor(df_model$sexo, labels = c("Hombre", "Mujer"))
+
+df_model$controlado <- as.factor(df_model$controlado)
+df_model$controlado <- factor(df_model$controlado, labels = c("No", "Si"))
+
+df_model$fragilidad <- as.factor(df_model$fragilidad)
+df_model$fragilidad <- factor(df_model$fragilidad, labels = c("No", "Si"))
+
+df_model$marcha_alterada <- as.factor(df_model$marcha_alterada)
+df_model$marcha_alterada <- factor(df_model$marcha_alterada, labels = c("No", "Si"))
+
+df_model$apoyo_alterado <- as.factor(df_model$apoyo_alterado)
+df_model$apoyo_alterado <- factor(df_model$apoyo_alterado, labels = c("No", "Si"))
+
+# Análisis univariado control
+
+uni_edad<-glm(controlado~edad, data = df_model, family = binomial)
+summary(uni_edad)           
+
+uni_sexo<-glm(controlado~sexo, data = df_model, family = binomial)
+summary(uni_sexo)
+
+uni_clase<-glm(controlado~clase, data = df_model, family = binomial)
+summary(uni_clase)  
+
+uni_conteo<-glm(controlado~grupo_enfermedades, data = df_model, family = binomial)
+summary(uni_conteo)  
+
+uni_iis<-glm(controlado~grupo_iis, data = df_model, family = binomial)
+summary(uni_iis)        
+               
+
+# Análisis multivariado
+
+multi_model_1 <-glm(controlado~edad + sexo + edad + grupo_enfermedades, data = df_model, family = binomial)
+summary(multi_model_1)   
+
+multi_model_2 <-glm(controlado~edad + sexo + edad + grupo_iis, data = df_model, family = binomial)
+summary(multi_model_2)  
+
+multi_model_3 <-glm(controlado~edad + sexo + edad + clase, data = df_model, family = binomial)
+summary(multi_model_3) 
+
+tab_model(multi_model_1)
+
+tab_model(multi_model_2)
+
+tab_model(multi_model_3)
+
+
+#Supuestos
+#linealidad
+df_model$logodds = predict(multi_model_1, df_model)
+df_model$prob = predict(multi_model_1,df_model,type="response")
+library(ggplot2)
+
+ggplot(df_model, aes(x=edad, y=logodds)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+df_model$logodds_2 = predict(multi_model_2, df_model)
+df_model$prob_2 = predict(multi_model_2,df_model,type="response")
+
+ggplot(df_model, aes(x=edad, y=logodds_2)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+df_model$logodds_3 = predict(multi_model_3, df_model)
+df_model$prob_3 = predict(multi_model_3,df_model,type="response")
+
+ggplot(df_model, aes(x=edad, y=logodds_3)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+```
+
+
+## Evaluacion de los modelos
+```{r}
+# Hosmer y Lemeshow
+library(ResourceSelection)
+library(PredictABEL)
+hoslem.test(df_model$controlado, fitted(multi_model_1))
+hoslem.test(df_model$controlado, fitted(multi_model_2))
+hoslem.test(df_model$controlado, fitted(multi_model_3))
+
+## plotCalibration(data = df_model, cOutcome = 5, predRisk = fitted(multi_model_1)) ## Solo funciona si el desenlace esta binario 
+
+# Curvas ROC y AUC
+library(pROC)
+#Posibilidad 1 
+rocmodcomp = roc(controlado ~ prob, data=df_model, AUC=TRUE)
+rocmodcomp
+plot(rocmodcomp, col="red")
+
+#Poribilidad 2 (Me gusta más)
+par(pty = "s") # Hacer cuadrado el espacio ROC
+
+roc_graph <- roc(df_model$controlado, multi_model_1$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph
+
+roc_graph_2 <- roc(df_model$controlado, multi_model_2$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_2
+
+roc_graph_3 <- roc(df_model$controlado, multi_model_3$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_3
+
+#R2 Nagelkerke
+library(rcompanion)
+nagelkerke(multi_model_1)
+nagelkerke(multi_model_2)
+nagelkerke(multi_model_3)
+
+```
+
+## Analisis funcionalidad
+```{r}
+# Análisis univariado fragilidad
+
+uni_edad_f<-glm(fragilidad~edad, data = df_model, family = binomial)
+summary(uni_edad_f)           
+
+uni_sexo_f<-glm(fragilidad~sexo, data = df_model, family = binomial)
+summary(uni_sexo_f)
+
+uni_clase_f<-glm(fragilidad~clase, data = df_model, family = binomial)
+summary(uni_clase_f)  
+
+uni_conteo_f<-glm(fragilidad~grupo_enfermedades, data = df_model, family = binomial)
+summary(uni_conteo_f)  
+
+uni_iis_f<-glm(fragilidad~grupo_iis, data = df_model, family = binomial)
+summary(uni_iis_f)        
+               
+
+# Análisis multivariado
+
+multi_model_1_f <-glm(fragilidad~edad + sexo  + grupo_enfermedades, data = df_model, family = binomial)
+summary(multi_model_1)   
+
+multi_model_2_f <-glm(fragilidad~edad + sexo  + grupo_iis, data = df_model, family = binomial)
+summary(multi_model_2)  
+
+multi_model_3_f <-glm(fragilidad~edad + sexo  + clase, data = df_model, family = binomial)
+summary(multi_model_3) 
+
+tab_model(multi_model_1_f)
+
+tab_model(multi_model_2_f)
+
+tab_model(multi_model_3_f)
+
+
+#Supuestos
+#linealidad
+df_model$logodds_f = predict(multi_model_1_f, df_model)
+df_model$prob_f = predict(multi_model_1_f,df_model,type="response")
+library(ggplot2)
+
+ggplot(df_model, aes(x=edad, y=logodds_f)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+df_model$logodds_2_f = predict(multi_model_2_f, df_model)
+df_model$prob_2_f = predict(multi_model_2_f,df_model,type="response")
+
+ggplot(df_model, aes(x=edad, y=logodds_2_f)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+df_model$logodds_3_f = predict(multi_model_3_f, df_model)
+df_model$prob_3_f = predict(multi_model_3_f,df_model,type="response")
+
+ggplot(df_model, aes(x=edad, y=logodds_3_f)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+# Hosmer y Lemeshow
+hoslem.test(df_model$fragilidad, fitted(multi_model_1_f))
+hoslem.test(df_model$fragilidad, fitted(multi_model_2_f))
+hoslem.test(df_model$fragilidad, fitted(multi_model_3_f))
+
+#ROC
+roc_graph_f <- roc(df_model$fragilidad, multi_model_1_f$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_f
+
+roc_graph_2_f <- roc(df_model$fragilidad, multi_model_2_f$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_2_f
+
+roc_graph_3_f <- roc(df_model$fragilidad, multi_model_3_f$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_3_f
+
+#R2 Nagelkerke
+library(rcompanion)
+nagelkerke(multi_model_1_f)
+nagelkerke(multi_model_2_f)
+nagelkerke(multi_model_3_f)
+
+```
+
+
+```{r}
+# Análisis univariado Marcha
+
+uni_edad_m<-glm(marcha_alterada~edad, data = df_model, family = binomial)
+summary(uni_edad_m)           
+
+uni_sexo_m<-glm(marcha_alterada~sexo, data = df_model, family = binomial)
+summary(uni_sexo_m)
+
+uni_clase_m<-glm(marcha_alterada~clase, data = df_model, family = binomial)
+summary(uni_clase_m)  
+
+uni_conteo_m<-glm(marcha_alterada~grupo_enfermedades, data = df_model, family = binomial)
+summary(uni_conteo_m)  
+
+uni_iis_m<-glm(marcha_alterada~grupo_iis, data = df_model, family = binomial)
+summary(uni_iis_m)        
+               
+
+# Análisis multivariado
+
+multi_model_1_m <-glm(marcha_alterada~edad + sexo  + grupo_enfermedades, data = df_model, family = binomial)
+summary(multi_model_1_m)   
+
+multi_model_2_m <-glm(marcha_alterada~edad + sexo  + grupo_iis, data = df_model, family = binomial)
+summary(multi_model_2_m)  
+
+multi_model_3_m <-glm(marcha_alterada~edad + sexo  + clase, data = df_model, family = binomial)
+summary(multi_model_3_m) 
+
+tab_model(multi_model_1_m)
+
+tab_model(multi_model_2_m)
+
+tab_model(multi_model_3_m)
+
+
+#Supuestos
+#linealidad
+df_model$logodds_m = predict(multi_model_1_m, df_model)
+df_model$prob_m = predict(multi_model_1_m,df_model,type="response")
+library(ggplot2)
+
+ggplot(df_model, aes(x=edad, y=logodds_m)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+df_model$logodds_2_m = predict(multi_model_2_m, df_model)
+df_model$prob_2_m = predict(multi_model_2_m,df_model,type="response")
+
+ggplot(df_model, aes(x=edad, y=logodds_2_m)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+df_model$logodds_3_m = predict(multi_model_3_m, df_model)
+df_model$prob_3_m = predict(multi_model_3_m,df_model,type="response")
+
+ggplot(df_model, aes(x=edad, y=logodds_3_m)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+# Hosmer y Lemeshow
+hoslem.test(df_model$marcha_alterada, fitted(multi_model_1_m))
+hoslem.test(df_model$marcha_alterada, fitted(multi_model_2_m))
+hoslem.test(df_model$marcha_alterada, fitted(multi_model_3_m))
+
+#ROC
+roc_graph_m <- roc(df_model$marcha_alterada, multi_model_1_m$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_m
+
+roc_graph_2_m <- roc(df_model$marcha_alterada, multi_model_2_m$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_2_m
+
+roc_graph_3_m <- roc(df_model$marcha_alterada, multi_model_3_m$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_3_m
+
+#R2 Nagelkerke
+library(rcompanion)
+nagelkerke(multi_model_1_m)
+nagelkerke(multi_model_2_m)
+nagelkerke(multi_model_3_m)
+
+```
+
+
+
+```{r}
+# Análisis univariado Apoyo
+
+uni_edad_a<-glm(apoyo_alterado~edad, data = df_model, family = binomial)
+summary(uni_edad_a)           
+
+uni_sexo_a<-glm(apoyo_alterado~sexo, data = df_model, family = binomial)
+summary(uni_sexo_a)
+
+uni_clase_a<-glm(apoyo_alterado~clase, data = df_model, family = binomial)
+summary(uni_clase_a)  
+
+uni_conteo_a<-glm(apoyo_alterado~grupo_enfermedades, data = df_model, family = binomial)
+summary(uni_conteo_a)  
+
+uni_iis_a<-glm(apoyo_alterado~grupo_iis, data = df_model, family = binomial)
+summary(uni_iis_a)        
+               
+
+# Análisis multivariable
+
+multi_model_1_a <-glm(apoyo_alterado~edad + sexo  + grupo_enfermedades, data = df_model, family = binomial)
+summary(multi_model_1_a)   
+
+multi_model_2_a <-glm(apoyo_alterado~edad + sexo  + grupo_iis, data = df_model, family = binomial)
+summary(multi_model_2_a)  
+
+multi_model_3_a <-glm(apoyo_alterado~edad + sexo  + clase, data = df_model, family = binomial)
+summary(multi_model_3_a) 
+
+tab_model(multi_model_1_a)
+
+tab_model(multi_model_2_a)
+
+tab_model(multi_model_3_a)
+
+
+#Supuestos
+#linealidad
+df_model$logodds_a = predict(multi_model_1_a, df_model)
+df_model$prob_a = predict(multi_model_1_a,df_model,type="response")
+library(ggplot2)
+
+ggplot(df_model, aes(x=edad, y=logodds_a)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+df_model$logodds_2_a = predict(multi_model_2_a, df_model)
+df_model$prob_2_a = predict(multi_model_2_a,df_model,type="response")
+
+ggplot(df_model, aes(x=edad, y=logodds_2_a)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+df_model$logodds_3_a = predict(multi_model_3_a, df_model)
+df_model$prob_3_a = predict(multi_model_3_a,df_model,type="response")
+
+ggplot(df_model, aes(x=edad, y=logodds_3_a)) +
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() 
+
+# Hosmer y Lemeshow
+hoslem.test(df_model$apoyo_alterado, fitted(multi_model_1_m))
+hoslem.test(df_model$apoyo_alterado, fitted(multi_model_2_m))
+hoslem.test(df_model$apoyo_alterado, fitted(multi_model_3_m))
+
+#ROC
+roc_graph_a <- roc(df_model$apoyo_alterado, multi_model_1_a$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_a
+
+roc_graph_2_a <- roc(df_model$apoyo_alterado, multi_model_2_a$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_2_a
+
+roc_graph_3_a <- roc(df_model$apoyo_alterado, multi_model_3_a$fitted.values, plot = TRUE, legacy.axes = TRUE,
+    percent = TRUE, ylab = "Sensitividad \n (Porcentaje de verdaderos positivos)",
+    xlab = "1- especificidad \n (Porcentaje de falsos positivos)", col = "darkblue", lwd = 2,
+    print.auc = TRUE, auc.polygon = TRUE, auc.polygon.col = "aliceblue", grid=TRUE)
+roc_graph_3_a
+
+#R2 Nagelkerke
+library(rcompanion)
+nagelkerke(multi_model_1_a)
+nagelkerke(multi_model_2_a)
+nagelkerke(multi_model_3_a)
+
+```
+
+
+
+
+## Curvas de decisión
+
+## CONTROL
+
+```{r}
+library(dcurves)
+library(gtsummary); library(dplyr); library(tidyr)
+# Covariables binarias o entre cero y 1
+
+df_dca <- datos_2[, c("edad", "sexo", "clase","grupo_enfermedades", "grupo_iis", "controlado", 
+                       "fragilidad", "marcha_alterada", "apoyo_alterado")]
+
+df_dca$sexo <- as.factor(df_dca$sexo)
+df_dca$sexo <- factor(df_dca$sexo, labels = c("Hombre", "Mujer"))
+
+#Univariados control
+# Indice
+modelo_iis <- glm(controlado ~ grupo_iis, data = df_dca, family = binomial)
+tbl_iis <- tbl_regression(modelo_iis, exponentiate = TRUE)
+tbl_iis
+
+df_dca$pred_prob_iis <- predict(modelo_iis, type = "response")
+
+dca_iis <- dca(controlado ~ pred_prob_iis, 
+    data = df_dca, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+    
+plot(dca_iis, smooth = TRUE)
+
+bn_iis <- dca_iis %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis
+
+# Conteo
+modelo_conteo <- glm(controlado ~ grupo_enfermedades, data = df_dca, family = binomial)
+tbl_conteo <- tbl_regression(modelo_conteo, exponentiate = TRUE)
+tbl_conteo
+
+df_dca$pred_prob_cont <- predict(modelo_conteo, type = "response")
+
+dca_cont <- dca(controlado ~ pred_prob_cont, 
+    data = df_dca, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+    
+plot(dca_cont, smooth = TRUE)
+
+bn_cont <- dca_cont %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont
+
+# Perfiles
+modelo_perfil <- glm(controlado ~ clase, data = df_dca, family = binomial)
+tbl_perfil <- tbl_regression(modelo_perfil, exponentiate = TRUE)
+tbl_perfil
+
+df_dca$pred_prob_per <- predict(modelo_perfil, type = "response")
+
+dca_per <- dca(controlado ~ pred_prob_per, 
+    data = df_dca, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+    
+plot(dca_per, smooth = TRUE)
+
+bn_per <- dca_per %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per
+
+```
+
+
+```{r}
+#Multivariable
+# Indice
+modelo_iis_c <- glm(controlado ~ grupo_iis + edad + sexo, data = df_dca, family = binomial)
+tbl_iis_c <- tbl_regression(modelo_iis_c, exponentiate = TRUE)
+tbl_iis_c
+
+df_dca$pred_prob_iis_c <- predict(modelo_iis_c, type = "response")
+
+dca_iis_c <- dca(controlado ~ pred_prob_iis_c, 
+    data = df_dca, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+    
+plot(dca_iis_c, smooth = TRUE)
+
+bn_iis_c <- dca_iis_c %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_c
+
+# Conteo
+modelo_conteo_c <- glm(controlado ~ grupo_enfermedades + edad + sexo, data = df_dca, family = binomial)
+tbl_conteo_c <- tbl_regression(modelo_conteo_c, exponentiate = TRUE)
+tbl_conteo_c
+
+df_dca$pred_prob_cont_c <- predict(modelo_conteo_c, type = "response")
+
+dca_cont_c <- dca(controlado ~ pred_prob_cont_c, 
+    data = df_dca, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+    
+plot(dca_cont_c, smooth = TRUE)
+
+bn_cont_c <- dca_cont_c %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_c
+
+# Perfiles
+modelo_perfil_c <- glm(controlado ~ clase + edad + sexo, data = df_dca, family = binomial)
+tbl_perfil_c <- tbl_regression(modelo_perfil_c, exponentiate = TRUE)
+tbl_perfil_c
+
+df_dca$pred_prob_per_c <- predict(modelo_perfil_c, type = "response")
+
+dca_per_c <- dca(controlado ~ pred_prob_per_c, 
+    data = df_dca, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+    
+plot(dca_per_c, smooth = TRUE)
+
+bn_per_c <- dca_per_c %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_c
+```
+
+## FRAGILIDAD
+
+```{r}
+#Univariados fragilidad
+# Indice
+modelo_iis_u_f <- glm(fragilidad ~ grupo_iis, data = df_dca, family = binomial)
+tbl_iis_u_f <- tbl_regression(modelo_iis_u_f, exponentiate = TRUE)
+tbl_iis_u_f
+
+df_dca$pred_prob_iis_u_f <- predict(modelo_iis_u_f, type = "response")
+
+dca_iis_u_f <- dca(fragilidad ~ pred_prob_iis_u_f, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_iis_u_f, smooth = TRUE)
+
+bn_iis_u_f <- dca_iis_u_f %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_u_f
+
+# Conteo
+modelo_conteo_u_f <- glm(fragilidad ~ grupo_enfermedades, data = df_dca, family = binomial)
+tbl_conteo_u_f <- tbl_regression(modelo_conteo_u_f, exponentiate = TRUE)
+tbl_conteo_u_f
+
+df_dca$pred_prob_cont_u_f <- predict(modelo_conteo_u_f, type = "response")
+
+dca_cont_u_f <- dca(fragilidad ~ pred_prob_cont_u_f, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_cont_u_f, smooth = TRUE)
+
+bn_cont_u_f <- dca_cont_u_f %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_u_f
+
+# Perfiles
+modelo_perfil_u_f <- glm(fragilidad ~ clase, data = df_dca, family = binomial)
+tbl_perfil_u_f <- tbl_regression(modelo_perfil_u_f, exponentiate = TRUE)
+tbl_perfil_u_f
+
+df_dca$pred_prob_per_u_f <- predict(modelo_perfil_u_f, type = "response")
+
+dca_per_u_f <- dca(fragilidad ~ pred_prob_per_u_f, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_per_u_f, smooth = TRUE)
+
+bn_per_u_f <- dca_per_u_f %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_u_f
+
+```
+
+```{r}
+# Multivariables fragilidad
+# Indice
+modelo_iis_m_f <- glm(fragilidad ~ grupo_iis + edad + sexo, data = df_dca, family = binomial)
+tbl_iis_m_f <- tbl_regression(modelo_iis_m_f, exponentiate = TRUE)
+tbl_iis_m_f
+
+df_dca$pred_prob_iis_m_f <- predict(modelo_iis_m_f, type = "response")
+
+dca_iis_m_f <- dca(fragilidad ~ pred_prob_iis_m_f, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_iis_m_f, smooth = TRUE)
+
+bn_iis_m_f <- dca_iis_m_f %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_m_f
+
+# Conteo
+modelo_conteo_m_f <- glm(fragilidad ~ grupo_enfermedades + edad + sexo, data = df_dca, family = binomial)
+tbl_conteo_m_f <- tbl_regression(modelo_conteo_m_f, exponentiate = TRUE)
+tbl_conteo_m_f
+
+df_dca$pred_prob_cont_m_f <- predict(modelo_conteo_m_f, type = "response")
+
+dca_cont_m_f <- dca(fragilidad ~ pred_prob_cont_m_f, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_cont_m_f, smooth = TRUE)
+
+bn_cont_m_f <- dca_cont_m_f %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_m_f
+
+# Perfiles
+modelo_perfil_m_f <- glm(fragilidad ~ clase + edad + sexo, data = df_dca, family = binomial)
+tbl_perfil_m_f <- tbl_regression(modelo_perfil_m_f, exponentiate = TRUE)
+tbl_perfil_m_f
+
+df_dca$pred_prob_per_m_f <- predict(modelo_perfil_m_f, type = "response")
+
+dca_per_m_f <- dca(fragilidad ~ pred_prob_per_m_f, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_per_m_f, smooth = TRUE)
+
+bn_per_m_f <- dca_per_m_f %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_m_f
+```
+
+## MARCHA
+
+```{r}
+#Univariados MARCHA
+# Indice
+modelo_iis_u_m <- glm(marcha_alterada ~ grupo_iis, data = df_dca, family = binomial)
+tbl_iis_u_m <- tbl_regression(modelo_iis_u_m, exponentiate = TRUE)
+tbl_iis_u_m
+
+df_dca$pred_prob_iis_u_m <- predict(modelo_iis_u_m, type = "response")
+
+dca_iis_u_m <- dca(marcha_alterada ~ pred_prob_iis_u_m, 
+    data = df_dca, 
+    thresholds = seq(0, 0.40, by = 0.01))
+    
+plot(dca_iis_u_m, smooth = TRUE)
+
+bn_iis_u_m <- dca_iis_u_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_u_m
+
+# Conteo
+modelo_conteo_u_m <- glm(marcha_alterada ~ grupo_enfermedades, data = df_dca, family = binomial)
+tbl_conteo_u_m <- tbl_regression(modelo_conteo_u_m, exponentiate = TRUE)
+tbl_conteo_u_m
+
+df_dca$pred_prob_cont_u_m <- predict(modelo_conteo_u_m, type = "response")
+
+dca_cont_u_m <- dca(marcha_alterada ~ pred_prob_cont_u_m, 
+    data = df_dca, 
+    thresholds = seq(0, 0.40, by = 0.01))
+    
+plot(dca_cont_u_m, smooth = TRUE)
+
+bn_cont_u_m <- dca_cont_u_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_u_m
+
+# Perfiles
+modelo_perfil_u_m <- glm(marcha_alterada ~ clase, data = df_dca, family = binomial)
+tbl_perfil_u_m <- tbl_regression(modelo_perfil_u_m, exponentiate = TRUE)
+tbl_perfil_u_m
+
+df_dca$pred_prob_per_u_m <- predict(modelo_perfil_u_m, type = "response")
+
+dca_per_u_m <- dca(marcha_alterada ~ pred_prob_per_u_m, 
+    data = df_dca, 
+    thresholds = seq(0, 0.40, by = 0.01))
+    
+plot(dca_per_u_m, smooth = TRUE)
+
+bn_per_u_m <- dca_per_u_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_u_m
+
+```
+
+
+
+```{r}
+#MULTIVARIABLES MARCHA
+# Indice
+modelo_iis_m_m <- glm(marcha_alterada ~ grupo_iis + edad + sexo, data = df_dca, family = binomial)
+tbl_iis_m_m <- tbl_regression(modelo_iis_m_m, exponentiate = TRUE)
+tbl_iis_m_m
+
+df_dca$pred_prob_iis_m_m <- predict(modelo_iis_m_m, type = "response")
+
+dca_iis_m_m <- dca(marcha_alterada ~ pred_prob_iis_m_m, 
+    data = df_dca, 
+    thresholds = seq(0, 0.40, by = 0.01))
+    
+plot(dca_iis_m_m, smooth = TRUE)
+
+bn_iis_m_m <- dca_iis_m_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_m_m
+
+# Conteo
+modelo_conteo_m_m <- glm(marcha_alterada ~ grupo_enfermedades + edad + sexo, data = df_dca, family = binomial)
+tbl_conteo_m_m <- tbl_regression(modelo_conteo_m_m, exponentiate = TRUE)
+tbl_conteo_m_m
+
+df_dca$pred_prob_cont_m_m <- predict(modelo_conteo_m_m, type = "response")
+
+dca_cont_m_m <- dca(marcha_alterada ~ pred_prob_cont_m_m, 
+    data = df_dca, 
+    thresholds = seq(0, 0.40, by = 0.01))
+    
+plot(dca_cont_m_m, smooth = TRUE)
+
+bn_cont_m_m <- dca_cont_m_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_m_m
+
+# Perfiles
+modelo_perfil_m_m <- glm(marcha_alterada ~ clase + edad + sexo, data = df_dca, family = binomial)
+tbl_perfil_m_m <- tbl_regression(modelo_perfil_m_m, exponentiate = TRUE)
+tbl_perfil_m_m
+
+df_dca$pred_prob_per_m_m <- predict(modelo_perfil_m_m, type = "response")
+
+dca_per_m_m <- dca(marcha_alterada ~ pred_prob_per_m_m, 
+    data = df_dca, 
+    thresholds = seq(0, 0.40, by = 0.01))
+    
+plot(dca_per_m_m, smooth = TRUE)
+
+bn_per_m_m <- dca_per_m_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_m_m
+
+```
+
+
+## APOYO
+```{r}
+#Univariados APOYO
+# Indice
+modelo_iis_u_a <- glm(apoyo_alterado ~ grupo_iis, data = df_dca, family = binomial)
+tbl_iis_u_a <- tbl_regression(modelo_iis_u_a, exponentiate = TRUE)
+tbl_iis_u_a
+
+df_dca$pred_prob_iis_u_a <- predict(modelo_iis_u_a, type = "response")
+
+dca_iis_u_a <- dca(apoyo_alterado ~ pred_prob_iis_u_a, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_iis_u_a, smooth = TRUE)
+
+bn_iis_u_a <- dca_iis_u_a %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_u_a
+
+# Conteo
+modelo_conteo_u_a <- glm(apoyo_alterado ~ grupo_enfermedades, data = df_dca, family = binomial)
+tbl_conteo_u_a <- tbl_regression(modelo_conteo_u_a, exponentiate = TRUE)
+tbl_conteo_u_a
+
+df_dca$pred_prob_cont_u_a <- predict(modelo_conteo_u_a, type = "response")
+
+dca_cont_u_a <- dca(apoyo_alterado ~ pred_prob_cont_u_a, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_cont_u_a, smooth = TRUE)
+
+bn_cont_u_a <- dca_cont_u_a %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_u_a
+
+# Perfiles
+modelo_perfil_u_a <- glm(apoyo_alterado ~ clase, data = df_dca, family = binomial)
+tbl_perfil_u_a <- tbl_regression(modelo_perfil_u_a, exponentiate = TRUE)
+tbl_perfil_u_a
+
+df_dca$pred_prob_per_u_a <- predict(modelo_perfil_u_a, type = "response")
+
+dca_per_u_a <- dca(apoyo_alterado ~ pred_prob_per_u_a, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_per_u_a, smooth = TRUE)
+
+bn_per_u_a <- dca_per_u_a %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_u_a
+
+```
+
+
+```{r}
+#MULTIVARIABLES APOYO
+# Indice
+modelo_iis_m_a <- glm(apoyo_alterado ~ grupo_iis + edad + sexo, data = df_dca, family = binomial)
+tbl_iis_m_a <- tbl_regression(modelo_iis_m_a, exponentiate = TRUE)
+tbl_iis_m_a
+
+df_dca$pred_prob_iis_m_a <- predict(modelo_iis_m_a, type = "response")
+
+dca_iis_m_a <- dca(apoyo_alterado ~ pred_prob_iis_m_a, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_iis_m_a, smooth = TRUE)
+
+bn_iis_m_a <- dca_iis_m_a %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_m_a
+
+# Conteo
+modelo_conteo_m_a <- glm(apoyo_alterado ~ grupo_enfermedades + edad + sexo, data = df_dca, family = binomial)
+tbl_conteo_m_a <- tbl_regression(modelo_conteo_m_a, exponentiate = TRUE)
+tbl_conteo_m_a
+
+df_dca$pred_prob_cont_m_a <- predict(modelo_conteo_m_a, type = "response")
+
+dca_cont_m_a <- dca(apoyo_alterado ~ pred_prob_cont_m_a, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_cont_m_a, smooth = TRUE)
+
+bn_cont_m_a <- dca_cont_m_a %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_m_a
+
+# Perfiles
+modelo_perfil_m_a <- glm(apoyo_alterado ~ clase + edad + sexo, data = df_dca, family = binomial)
+tbl_perfil_m_a <- tbl_regression(modelo_perfil_m_a, exponentiate = TRUE)
+tbl_perfil_m_a
+
+df_dca$pred_prob_per_m_a <- predict(modelo_perfil_m_a, type = "response")
+
+dca_per_m_a <- dca(apoyo_alterado ~ pred_prob_per_m_a, 
+    data = df_dca, 
+    thresholds = seq(0.10, 0.40, by = 0.01))
+    
+plot(dca_per_m_a, smooth = TRUE)
+
+bn_per_m_a <- dca_per_m_a %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_m_a
+
+```
+
+

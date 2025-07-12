@@ -1,0 +1,23 @@
+"0",""
+"0","# Curva 3 (añadida a la misma gráfica)"
+"0","roc_iis_a_m <- roc(df_modelos$apoyo_alterado, modelo_iis_a_m$fitted.values)"
+"2","Setting levels: control = 0, case = 1
+"
+"2","Setting direction: controls < cases
+"
+"0","ci.auc(roc_iis_a_m)"
+"1","95"
+"1",""
+"1","% CI: "
+"1","0.6456"
+"1",""
+"1",""
+"1",""
+"1","-"
+"1",""
+"1","0.7384"
+"1",""
+"1",""
+"1"," (DeLong)
+"
+"0","plot(roc_iis_a_m, add = TRUE, col = ""darkgreen"", lwd = 2)"

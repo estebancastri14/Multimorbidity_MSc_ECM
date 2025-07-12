@@ -1,0 +1,16 @@
+"0","#Multivariable"
+"0","# Perfiles"
+"0",""
+"0","dca_per_f_m <- dca(fragilidad ~ prob_predicha_per_f_m, "
+"0","    data = df_modelos, "
+"0","    thresholds = seq(0.10, 0.30, by = 0.01))"
+"2","Assuming '1' is [Event] and '0' is [non-Event]
+"
+"0","    "
+"0","plot(dca_per_f_m, smooth = TRUE)"
+"2","Warning in sqrt(sum.squares/one.delta) :"
+"2"," Se han producido NaNs
+"
+"2","Warning in sqrt(sum.squares/one.delta) :"
+"2"," Se han producido NaNs
+"

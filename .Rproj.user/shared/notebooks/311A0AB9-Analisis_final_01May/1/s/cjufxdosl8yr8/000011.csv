@@ -1,0 +1,6 @@
+"0","#Univariados control"
+"0",""
+"0","# Perfil"
+"0","modelo_per <- glm(controlado ~ Clase_Latente, data = df_modelos, family = binomial)"
+"0","tbl_per <- tbl_regression(modelo_per, exponentiate = TRUE)"
+"0","tbl_per "

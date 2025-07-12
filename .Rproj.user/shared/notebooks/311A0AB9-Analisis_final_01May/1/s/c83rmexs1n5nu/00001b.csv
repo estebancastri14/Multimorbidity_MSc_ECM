@@ -1,0 +1,21 @@
+"0",""
+"0","# Grafico en conjunto"
+"0",""
+"0","dca_fragilidad <- dca(fragilidad ~ prob_predicha_per_f_m + prob_predicha_cont_f_m + prob_predicha_iis_f_m, "
+"0","    data = df_modelos, "
+"0","    thresholds = seq(0.10, 0.30, by = 0.01))"
+"2","Assuming '1' is [Event] and '0' is [non-Event]
+"
+"0","plot(dca_fragilidad, smooth = TRUE)"
+"2","Warning in sqrt(sum.squares/one.delta) :"
+"2"," Se han producido NaNs
+"
+"2","Warning in sqrt(sum.squares/one.delta) :"
+"2"," Se han producido NaNs
+"
+"2","Warning in sqrt(sum.squares/one.delta) :"
+"2"," Se han producido NaNs
+"
+"2","Warning in sqrt(sum.squares/one.delta) :"
+"2"," Se han producido NaNs
+"

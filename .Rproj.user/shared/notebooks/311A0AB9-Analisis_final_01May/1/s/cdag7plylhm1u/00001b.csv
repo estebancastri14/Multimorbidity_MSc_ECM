@@ -1,0 +1,9 @@
+"0",""
+"0","# Grafico en conjunto"
+"0",""
+"0","dca_apoyo <- dca(apoyo_alterado ~ prob_predicha_per_a_m + prob_predicha_cont_a_m + prob_predicha_iis_a_m, "
+"0","    data = df_modelos, "
+"0","    thresholds = seq(0.60, 0.80, by = 0.01))"
+"2","Assuming '1' is [Event] and '0' is [non-Event]
+"
+"0","plot(dca_apoyo, smooth = TRUE)"

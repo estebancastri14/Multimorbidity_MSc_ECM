@@ -1,0 +1,5 @@
+"0",""
+"0","# Indice"
+"0","modelo_iis_ma <- glm(marcha_alterada ~ grupo_iis, data = df_modelos, family = binomial)"
+"0","tbl_iis_ma <- tbl_regression(modelo_iis_ma, exponentiate = TRUE)"
+"0","tbl_iis_ma"

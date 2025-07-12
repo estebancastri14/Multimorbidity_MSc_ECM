@@ -1,0 +1,1606 @@
+---
+title: "Otras_enf_cronicas"
+author: "Esteban Castrillón Martínez"
+date: "2025-05-30"
+output: html_document
+---
+
+```{r}
+# Cargar librerías necesarias
+library(dplyr)
+library(summarytools)
+library(dplyr)
+library(table1)
+library(rcompanion)
+
+# Cargar el archivo
+library(readr)
+df_multimorbilidad <- read_csv("D:/esteb/Documents/Posgrado/Analisis/df_enfermedades_r.csv")
+df_multimorbilidad_2 <- read_csv("D:/esteb/Documents/Posgrado/Analisis/df_completo.csv")
+View(df_multimorbilidad)
+
+datos <- df_multimorbilidad[,2:21]
+datos_2 <- df_multimorbilidad_2[,2:79]
+
+datos$grupo_poco_prevalente <- ifelse(
+  datos$artritis_reumatoide == 1 | datos$les == 1 |
+  datos$asma == 1 | datos$saos == 1 | datos$eap == 1 | datos$osteoporosis == 1 |
+  datos$gota == 1 | datos$hipertir == 1,
+  1, 0
+)
+
+# Convertir 0 → 1 y 1 → 2, y transformar a factor
+datos[] <- lapply(datos, function(x) {
+  x <- ifelse(x == 0, 1, 2)  # cambio de codificación
+  factor(x, levels = c(1, 2))  # asegurar que es factor con niveles correctos
+})
+
+```
+
+
+## Perfiles (Prueba 1)
+```{r}
+# Cargar librerías necesarias
+library(data.table)
+library(poLCA)  # Para análisis de clases latentes
+library(ggplot2)
+
+f<-with(datos, cbind(diabetes,hta,erc,epoc,scc,ecv,dislip,icc,obesidad,
+                     fibri_auricular,osteoartritis, hipotir, grupo_poco_prevalente)~1)
+k=10
+for(i in 1:k){
+  assign(paste("lc",i,sep=""),
+         poLCA(f, datos, nclass=i, maxiter=3000,
+               tol=1e-5, na.rm=FALSE, 
+               nrep=100, verbose=TRUE, calc.se=TRUE))
+}
+
+tab.modfit <- data.frame()
+
+calcular_entropia <- function(modelo) {
+  probs <- modelo$posterior  # Matriz N x K con probabilidades de pertenencia
+  N <- nrow(probs)
+  K <- ncol(probs)
+  log_probs <- log(probs)
+  log_probs[is.infinite(log_probs)] <- 0  # evitar log(0)
+  suma <- -sum(probs * log_probs)
+  entropia <- 1 - (suma / (N * log(K)))
+  return(entropia)
+}
+
+for (i in 1:k) {
+  modelo <- get(paste("lc", i, sep = ""))
+  
+  entropia <- calcular_entropia(modelo)
+  
+  fila <- data.frame(
+    Nclass = i,
+    logLik = modelo$llik,
+    npar = modelo$npar,
+    AIC = modelo$aic,
+    BIC = modelo$bic,
+    Gsq = modelo$Gsq,
+    chi2 = modelo$Chisq,
+    df = modelo$resid.df,
+    Entropia = round(entropia, 4)
+  )
+  tab.modfit <- rbind(tab.modfit, fila)
+}
+
+# Ver los resultados
+print(tab.modfit)
+
+
+lca_select <- function(f,datos,nb_var,k,nbr_repet)
+  # f is the selected variables
+  # dat is the data
+  # nb_var is the number of selected variables
+  # k is the number of latent class generated
+  # nbr_repet is the number of repetition to
+  # reach the convergence of EM algorithm
+{
+  N=length(t(datos[,1]))
+  tab.modfit<-data.frame(matrix(rep(999,12),nrow=1))
+  names(tab.modfit)<-c("Df","Gsq","Llik","AIC",
+                       "mAIC","AICc","HT",
+                       "cAIC","AICc","BIC","aBIC","HQ")
+  for(i in 2:k){
+    assign(paste("lc",i,sep=""),
+           poLCA(f, datos, nclass=i, maxiter=3000,
+                 tol=1e-5, na.rm=FALSE,
+                 nrep=nbr_repet, verbose=TRUE, calc.se=TRUE))
+    tab.modfit<-rbind(tab.modfit, c(
+      get(paste("lc",i,sep=""))$resid.df, #df
+      get(paste("lc",i,sep=""))$Gsq, #gsq
+      get(paste("lc",i,sep=""))$llik, #llik
+      -2*get(paste("lc",i,sep=""))$llik+
+        2*get(paste("lc",i,sep=""))$npar, #AIC
+      -2*get(paste("lc",i,sep=""))$llik+
+        3*get(paste("lc",i,sep=""))$npar, #AIC3
+      -2*get(paste("lc",i,sep=""))$llik+
+        2*get(paste("lc",i,sep=""))$npar+
+        (2*get(paste("lc",i,sep=""))$npar*get(paste("lc",
+                                                    i,sep=""))$npar+1)/(N-get(
+                                                      paste("lc",i,sep=""))$npar-1), #AICC
+      -2*get(paste("lc",i,sep=""))$llik+
+        2*get(paste("lc",i,sep=""))$npar+
+        (2*(get(paste("lc",i,sep=""))$npar+1)*(get(paste("lc",
+                                                         i,sep=""))$npar+2))/(N-get(
+                                                           paste("lc",i,sep=""))$npar-2), #HT
+      -2*get(paste("lc",i,sep=""))$llik+get(
+        paste("lc",i,sep=""))$npar*(log(N)+1), #CAIC
+      -2*get(paste("lc",i,sep=""))$llik+
+        2*get(paste("lc",i,sep=""))$npar+
+        (2*get(paste("lc",i,sep=""))$npar*get(paste("lc",
+                                                    i,sep=""))$npar+1)/(N-get(paste("lc",i,sep=""))$
+                                                                          npar-1)+
+        N*log(N/(N-get(paste("lc",i,sep=""))$npar-1)), #CAIU
+      -2*get(paste("lc",i,sep=""))$llik+
+        get(paste("lc",i,sep=""))$npar*log(N), #BIC
+      -2*get(paste("lc",i,sep=""))$llik+
+        get(paste("lc",i,sep=""))$npar*log((N+2)/24), #ABIC
+      -2*get(paste("lc",i,sep=""))$llik+
+        2*get(paste("lc",i,sep=""))$npar*log(log(N)) #HQ
+    ))
+  }
+  tab.modfit<-round(tab.modfit[-1,],2)
+  tab.modfit$Nclass<-2:k
+  print(tab.modfit)
+  plot(tab.modfit$AIC,type="l",lty=2,lwd=1,
+       xaxt="n",
+       ylim=c(min(tab.modfit$AIC,tab.modfit$aBIC)-
+                100,round(max(tab.modfit$BIC,tab.modfit$aBIC))+100),
+       col="black",
+       xlab="Number of classes",ylab="Information criteria",
+       main="Comparison of information criteria to choose the 
+number of classes")
+  axis(1,at=1:length(tab.modfit$Nclass),
+       labels=tab.modfit$Nclass)
+  lines(tab.modfit$AIC,col="black",type="l",lty=2,lwd=1)
+  lines(tab.modfit$BIC,col="red",type="l",lty=2,lwd=1)
+  lines(tab.modfit$aBIC,col="green",type="l",lty=2,
+        lwd=1)
+  lines(tab.modfit$cAIC,col="orange",type="l",lty=2,
+        lwd=1)
+  lines(tab.modfit$HQ,col="blue",type="l",lty=2,lwd=1)
+  #lines(dd$caiu,col="purple",type="l",lty=7,lwd=2)
+  #lines(dd$bica,col="grey",type="l",lty=8,lwd=2)
+  #lines(dd$hq,col="pink",type="l",lty=9,lwd=2)
+  legend("topright",legend=c("AIC","BIC","aBIC","cAIC",
+                             "HT"),
+         pch=21,col=c("black","red","green","orange","blue"),
+         ncol=5,bty="n",cex=0.8,lty=1:9,
+         text.col=c("black","red","green","orange","blue"), 
+         inset=0.01)
+}
+
+lca_select(with(datos, cbind(diabetes,hta,erc,epoc,scc,ecv,dislip,icc,obesidad,
+                     fibri_auricular,osteoartritis, hipotir, grupo_poco_prevalente)~1),
+           datos, k=10, nbr_repet=100)
+
+```
+
+
+```{r}
+lc3$predclass
+
+datos$Clase_Latente <- lc3$predclass
+datos_2$Clase_Latente <- lc3$predclass
+
+datos$Clase_Latente <- as.numeric(datos$Clase_Latente)
+datos$Clase_Latente <- as.factor(datos$Clase_Latente)
+
+datos_2$Clase_Latente <- as.numeric(datos_2$Clase_Latente)
+datos_2$Clase_Latente <- as.factor(datos_2$Clase_Latente)
+
+
+# Lista de variables a transformar
+vars <- c("diabetes", "hta", "erc", "epoc", "scc", "ecv", "dislip", "icc", "obesidad", "osteoporosis", "fibri_auricular", "hipotir", "hipertir", "osteoartritis", "artritis_reumatoide", "les", "asma", "eap", "saos", "gota")
+
+# Aplicar transformación
+datos <- datos %>%
+  mutate(across(all_of(vars), ~ factor(.x, labels = c("No", "Si"))))
+
+table1(~ factor(diabetes) + factor(hta) + factor(erc) + factor(epoc) + factor(scc) + factor(ecv) + factor(dislip) + factor(icc) + factor(obesidad) + factor(osteoporosis) + factor(fibri_auricular) + factor(hipotir) + factor(hipertir) + factor(osteoartritis) + factor(artritis_reumatoide) + factor(les) + factor(asma) + factor(eap) + factor(saos) + factor(gota) | Clase_Latente, data=datos)
+
+```
+
+
+## Conteo 
+```{r}
+# Identificar el rango de columnas desde "diabetes" hasta "gota"
+col_inicio_2 <- which(names(datos_2) == "diabetes")
+col_fin_2 <- which(names(datos_2) == "gota")
+
+# Calcular el número de enfermedades por paciente
+datos_2$Numero_Enfermedades <- rowSums(datos_2[, col_inicio_2:col_fin_2, with=FALSE])
+
+datos_2 <- datos_2 %>%
+  mutate(grupo_enfermedades = case_when(
+    Numero_Enfermedades <= 1 ~ "0-1 enfermedades",
+    Numero_Enfermedades >= 2 ~ "2 o más enfermedades",
+    TRUE                     ~ NA_character_
+  ))
+
+# Convertir a factor
+datos_2$grupo_enfermedades <- factor(datos_2$grupo_enfermedades, 
+                                   levels = c("0-1 enfermedades", "2 o más enfermedades"))
+
+table(datos_2$grupo_enfermedades)
+```
+
+## Indice
+```{r}
+datos_2 <- datos_2 %>%
+  mutate(grupo_iis = case_when(
+    puntaje_iis == 0              ~ "No enfermo",
+    puntaje_iis >= 1 & puntaje_iis <= 2 ~ "Levemente enfermo",
+    puntaje_iis >= 3 & puntaje_iis <= 5 ~ "Moderadamente enfermo",
+    puntaje_iis >= 6              ~ "Gravemente enfermo",
+    TRUE                          ~ NA_character_  # Para valores faltantes o no válidos
+  ))
+
+# Convertir a variable tipo factor con orden
+datos_2$grupo_iis <- factor(datos_2$grupo_iis, 
+                          levels = c("No enfermo", "Levemente enfermo", 
+                                     "Moderadamente enfermo", "Gravemente enfermo"))
+
+table(datos_2$grupo_iis)
+```
+
+
+
+### Desenlaces
+## Desenlace control
+
+```{r}
+# Identificar columnas
+columnas_enfermedades <- which(names(datos_2) %in% c("diabetes","hta","erc","epoc","scc","ecv","dislip","icc","obesidad","osteoporosis",
+                     "fibri_auricular","hipotir","hipertir","osteoartritis","artritis_reumatoide","les","asma",
+                     "eap","saos","gota")) 
+columnas_ctrl <- which(names(datos_2) %in% c("ctrl_diabetes","ctrl_hta","ctrl_erc","ctrl_epoc","ctrl_scc","ctrl_ecv","ctrl_dislip","ctrl_icc","ctrl_obesidad","ctrl_osteo","ctrl_fa","ctrl_hipotir","ctrl_hipertir","ctrl_osteoartritis","ctrl_artritis_reuma","ctrl_les","ctrl_asma","ctrl_eap","ctrl_saos","ctrl_gota")) 
+
+# Crear la variable dependiente
+datos_2 <- datos_2 %>%
+  rowwise() %>%
+  mutate(
+    controlado = ifelse(
+      all(across(
+        all_of(names(datos_2)[columnas_ctrl])[across(all_of(names(datos_2)[columnas_enfermedades])) == 1],
+        ~ .x == 1
+      )),
+      1,
+      0
+    )
+  ) %>%
+  ungroup()
+
+table(datos_2$controlado)
+
+
+```
+
+## Desenlaces funcionalidad
+
+```{r}
+# Crear nuevas variables categorizadas
+datos_2 <- datos_2 %>%
+  mutate(
+    fragilidad = ifelse(ind_gro_final >= 5, 1, ifelse(ind_gro_final <= 4, 0, NA)),
+    marcha_alterada = ifelse(marcha_final <= 0.60, 1, ifelse(marcha_final >= 0.61, 0, NA)),
+    apoyo_alterado = ifelse(apoyo_final <= 10, 1, ifelse(apoyo_final >= 11, 0, NA))
+  )
+
+table(datos_2$marcha_alterada)
+table(datos_2$fragilidad)
+table(datos_2$apoyo_alterado)
+
+```
+
+
+## Modelos
+# Variable adherencia 
+```{r}
+# Identificar columnas
+columnas_enfermedades <- which(names(datos_2) %in% c(
+  "diabetes", "hta", "erc", "epoc", "scc", "ecv", "dislip", "icc", "obesidad", "osteoporosis",
+  "fibri_auricular", "hipotir", "hipertir", "osteoartritis", "artritis_reumatoide", "les", "asma",
+  "eap", "saos", "gota"))
+
+columnas_adh <- which(names(datos_2) %in% c(
+  "adh_diabetes", "adh_hta", "adh_erc", "adh_epoc", "adh_scc", "adh_ecv", "adh_dislip", "adh_icc", "adh_obesidad", "adh_osteo",
+  "adh_fa", "adh_hipotir", "adh_hipertir", "adh_osteoartritis", "adh_artritis_reuma", "adh_les", "adh_asma", "adh_eap", "adh_saos", "adh_gota"))
+
+# Crear variable de adherencia total
+datos_2 <- datos_2 %>%
+  rowwise() %>%
+  mutate(
+    adherente_total = ifelse(
+      all(across(
+        .cols = all_of(names(datos_2)[columnas_adh])[across(all_of(names(datos_2)[columnas_enfermedades])) == 1],
+        .fns = ~ .x == 1
+      )),
+      1,
+      0
+    )
+  ) %>%
+  ungroup()
+
+datos_2$adherente_total <- as.factor(datos_2$adherente_total)
+datos_2$adherente_total <- factor(datos_2$adherente_total, labels = c("No", "Si"))
+
+table(datos_2$adherente_total)
+
+```
+
+## Control casos
+```{r}
+table(datos_2$grupo_iis, datos_2$controlado)
+table(datos_2$grupo_enfermedades, datos_2$controlado)
+table(datos_2$Clase_Latente, datos_2$controlado)
+```
+
+# Modelos
+
+```{r}
+library(gtsummary); library(dplyr); library(tidyr)
+df_modelos <- datos_2[, c("edad", "sexo", "adherente_total", "Clase_Latente", "grupo_enfermedades", "grupo_iis", "controlado", 
+                       "fragilidad", "marcha_alterada", "apoyo_alterado")]
+
+df_modelos$sexo <- as.factor(df_modelos$sexo)
+df_modelos$sexo <- factor(df_modelos$sexo, labels = c("Hombre", "Mujer"))
+
+```
+
+
+## Control
+```{r}
+#Univariados control
+
+# Perfil
+modelo_per <- glm(controlado ~ Clase_Latente, data = df_modelos, family = binomial)
+tbl_per <- tbl_regression(modelo_per, exponentiate = TRUE)
+tbl_per 
+
+# Conteo
+modelo_cont <- glm(controlado ~ grupo_enfermedades, data = df_modelos, family = binomial)
+tbl_cont <- tbl_regression(modelo_cont, exponentiate = TRUE)
+tbl_cont
+
+# Indice
+modelo_iis <- glm(controlado ~ grupo_iis, data = df_modelos, family = binomial)
+tbl_iis <- tbl_regression(modelo_iis, exponentiate = TRUE)
+tbl_iis
+
+```
+
+
+```{r}
+#Multivariable control
+
+# Perfil
+modelo_per_m <- glm(controlado ~ Clase_Latente + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_per_m <- tbl_regression(modelo_per_m, exponentiate = TRUE)
+tbl_per_m 
+modelo_per_m
+
+# Conteo
+modelo_cont_m <- glm(controlado ~ grupo_enfermedades + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_cont_m <- tbl_regression(modelo_cont_m, exponentiate = TRUE)
+tbl_cont_m
+modelo_cont_m
+
+# Indice
+modelo_iis_m <- glm(controlado ~ grupo_iis + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_iis_m <- tbl_regression(modelo_iis_m, exponentiate = TRUE)
+tbl_iis_m
+modelo_iis_m
+
+```
+
+
+## Calibracion
+
+```{r}
+library(CalibrationCurves)
+calPerf = val.prob.ci.2(df_modelos$prob_predicha_per_m, df_modelos$controlado)
+calCont = val.prob.ci.2(df_modelos$prob_predicha_cont_m, df_modelos$controlado)
+calIis = val.prob.ci.2(df_modelos$prob_predicha_iis_m, df_modelos$controlado)
+```
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(rms) # para val.prob y calibración
+library(ResourceSelection)  # para prueba de Hosmer-Lemeshow
+
+#Perfiles
+df_modelos$prob_predicha_per_m <- predict(modelo_per_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_per_m, df_modelos$controlado, m = 10, xlab="Probabilidad predicha", ylab="Observaciones", cex = 0.8, statloc = FALSE)
+
+
+hoslem.test(df_modelos$controlado, df_modelos$prob_predicha_per_m, g = 10)
+
+#Conteo
+df_modelos$prob_predicha_cont_m <- predict(modelo_cont_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_cont_m, df_modelos$controlado, m = 10, xlab="Probabilidad predicha", ylab="Observaciones", cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$controlado, df_modelos$prob_predicha_cont_m, g = 10)
+
+#índice
+df_modelos$prob_predicha_iis_m <- predict(modelo_iis_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_iis_m, df_modelos$controlado, m = 10, xlab="Probabilidad predicha", ylab="Observaciones", cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$controlado, df_modelos$prob_predicha_iis_m, g = 10)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Función auxiliar
+get_calib_data <- function(probs, outcome, model_name) {
+  data.frame(
+    prob = probs,
+    outcome = outcome,
+    model = model_name
+  )
+}
+
+# Construir datasets
+calib_perfiles <- get_calib_data(df_modelos$prob_predicha_per_m, df_modelos$controlado, "Perfiles")
+calib_conteo   <- get_calib_data(df_modelos$prob_predicha_cont_m, df_modelos$controlado, "Conteo")
+calib_indice   <- get_calib_data(df_modelos$prob_predicha_iis_m, df_modelos$controlado, "Índice")
+
+# Combinar
+calib_all <- bind_rows(calib_perfiles, calib_conteo, calib_indice)
+
+# Graficar con colores personalizados
+ggplot(calib_all, aes(x = prob, y = outcome, color = model)) +
+  geom_smooth(method = "loess", se = FALSE, span = 0.8) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_color_manual(values = c("Perfiles" = "#003399",  
+                                "Conteo" = "#8B0000",
+                                "Índice" = "#006400")) +
+  labs(
+    title = "Curvas de calibración suavizadas",
+    x = "Probabilidad predicha",
+    y = "Proporción observada"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+
+
+```
+
+
+## Nagelkerke
+```{r}
+library(rcompanion)
+nagelkerke(modelo_per_m)
+nagelkerke(modelo_cont_m)
+nagelkerke(modelo_iis_m)
+```
+
+
+## Curvas ROC
+```{r}
+library(pROC)
+
+# Curva 1
+roc_per_m <- roc(df_modelos$controlado, modelo_per_m$fitted.values)
+ci.auc(roc_per_m)
+plot(roc_per_m,
+     legacy.axes = TRUE,
+     percent = TRUE,
+     ylab = "Sensibilidad",
+     xlab = "1 - Especificidad",
+     col = "darkblue", lwd = 2, grid = TRUE)
+
+# Curva 2 (añadida a la misma gráfica)
+roc_cont_m <- roc(df_modelos$controlado, modelo_cont_m$fitted.values)
+ci.auc(roc_cont_m)
+plot(roc_cont_m, add = TRUE, col = "darkred", lwd = 2)
+
+# Curva 3 (añadida a la misma gráfica)
+roc_iis_m <- roc(df_modelos$controlado, modelo_iis_m$fitted.values)
+ci.auc(roc_iis_m)
+plot(roc_iis_m, add = TRUE, col = "darkgreen", lwd = 2)
+
+# Agregar leyenda
+legend("bottomright",
+       legend = c(
+         paste0("Modelo Perfiles (AUC = ", format(auc(roc_per_m), digits = 3), "%)"),
+         paste0("Modelo Conteo (AUC = ", format(auc(roc_cont_m), digits = 3), "%)"),
+         paste0("Modelo Índice (AUC = ", format(auc(roc_iis_m), digits = 3), "%)")
+       ),
+       col = c("darkblue", "darkred", "darkgreen"),
+       lwd = 2)
+
+
+```
+
+
+## Curvas de decision
+```{r}
+library(dcurves)
+library(gtsummary); library(dplyr); library(tidyr)
+
+#Multivariable
+# Perfiles
+
+dca_per_c <- dca(controlado ~ prob_predicha_per_m, 
+    data = df_modelos, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+    
+plot(dca_per_c, smooth = TRUE)
+
+bn_per_c <- dca_per_c %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_c
+
+# Conteo
+
+dca_cont_c <- dca(controlado ~ prob_predicha_cont_m, 
+    data = df_modelos, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+    
+plot(dca_cont_c, smooth = TRUE)
+
+bn_cont_c <- dca_cont_c %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_c
+
+# Indice
+
+dca_iis_c <- dca(controlado ~ prob_predicha_iis_m, 
+    data = df_modelos, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+    
+plot(dca_iis_c, smooth = TRUE)
+
+bn_iis_c <- dca_iis_c %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_c
+
+# Grafico en conjunto
+
+dca_control <- dca(controlado ~ prob_predicha_per_m + prob_predicha_cont_m + prob_predicha_iis_m, 
+    data = df_modelos, 
+    thresholds = seq(0.20, 0.40, by = 0.01))
+
+plot(dca_control, smooth = TRUE)
+
+
+## Tabla
+
+tabla_bn <- dca_control %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.20, 0.40, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+tabla_bn
+
+tabla_bn <- tabla_bn %>%
+  mutate(
+    delta_per_vs_todos = prob_predicha_per_m - all,
+    delta_cont_vs_todos = prob_predicha_cont_m - all,
+    delta_iis_vs_todos = prob_predicha_iis_m - all
+  )
+
+tabla_bn
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(dcurves)
+
+# Crear objeto dca
+dca_control <- dca(controlado ~ prob_predicha_per_m + prob_predicha_cont_m + prob_predicha_iis_m, 
+                   data = df_modelos, 
+                   thresholds = seq(0.20, 0.40, by = 0.01))
+
+# Convertir a tibble y etiquetar
+df_dca <- as_tibble(dca_control) %>%
+  mutate(variable_label = case_when(
+    variable == "prob_predicha_per_m"  ~ "Perfiles",
+    variable == "prob_predicha_cont_m" ~ "Conteo",
+    variable == "prob_predicha_iis_m"  ~ "Índice",
+    variable == "all" ~ "Tratar a todos",
+    variable == "none" ~ "Tratar a nadie"
+  ))
+
+# Graficar suavizado con límites en eje Y
+ggplot(df_dca, aes(x = threshold, y = net_benefit, color = variable_label)) +
+  geom_smooth(se = FALSE, method = "loess", span = 0.3, linewidth = 1) +
+  scale_color_manual(
+    values = c(
+      "Perfiles" = "#003399",      # Azul rey
+      "Conteo" = "#8B0000",        # Rojo oscuro
+      "Índice" = "#006400",        # Verde oscuro
+      "Tratar a todos" = "black",  # Negro
+      "Tratar a nadie" = "grey40"  # Gris oscuro
+    )
+  ) +
+  coord_cartesian(ylim = c(-0.05, NA)) +  # Limitar Y hasta -0.05
+  labs(
+    title = "Curvas de beneficio neto (DCA)",
+    x = "Umbral de probabilidad",
+    y = "Beneficio neto",
+    color = NULL
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 12))
+
+```
+
+
+## Validacion interna
+```{r}
+library(rms)
+
+# Establecer distribución (binomial), número de observaciones y diseño
+dd <- datadist(df_modelos)
+options(datadist = "dd")
+
+# Modelos con lrm
+# Modelo con perfiles
+modelo_per_lrm <- lrm(controlado ~ Clase_Latente + edad + sexo + adherente_total,
+                      data = df_modelos, x = TRUE, y = TRUE)
+
+# Modelo con conteo
+modelo_cont_lrm <- lrm(controlado ~ grupo_enfermedades + edad + sexo + adherente_total,
+                       data = df_modelos, x = TRUE, y = TRUE)
+
+# Modelo con índice
+modelo_iis_lrm <- lrm(controlado ~ grupo_iis + edad + sexo + adherente_total,
+                      data = df_modelos, x = TRUE, y = TRUE)
+
+
+set.seed(123)  # para reproducibilidad
+
+# Perfil
+val_per <- validate(modelo_per_lrm, method = "boot", B = 1000)
+
+# Conteo
+val_cont <- validate(modelo_cont_lrm, method = "boot", B = 1000)
+
+# Índice
+val_iis <- validate(modelo_iis_lrm, method = "boot", B = 1000)
+
+# AUC ajustado
+auc_per <- (val_per["Dxy", "index.corrected"] + 1) / 2
+auc_cont <- (val_cont["Dxy", "index.corrected"] + 1) / 2
+auc_iis <- (val_iis["Dxy", "index.corrected"] + 1) / 2
+
+print(val_per)
+print(val_cont)
+print(val_iis)
+
+auc_per
+auc_cont
+auc_iis
+
+```
+
+
+
+
+# Fragilidad
+```{r}
+table(datos_2$grupo_iis, datos_2$fragilidad)
+table(datos_2$grupo_enfermedades, datos_2$fragilidad)
+table(datos_2$Clase_Latente, datos_2$fragilidad)
+```
+
+
+```{r}
+#Univariados fragilidad
+
+# Perfil
+modelo_per_f <- glm(fragilidad ~ Clase_Latente, data = df_modelos, family = binomial)
+tbl_per_f <- tbl_regression(modelo_per_f, exponentiate = TRUE)
+tbl_per_f 
+
+# Conteo
+modelo_cont_f <- glm(fragilidad ~ grupo_enfermedades, data = df_modelos, family = binomial)
+tbl_cont_f <- tbl_regression(modelo_cont_f, exponentiate = TRUE)
+tbl_cont_f
+
+# Indice
+modelo_iis_f <- glm(fragilidad ~ grupo_iis, data = df_modelos, family = binomial)
+tbl_iis_f <- tbl_regression(modelo_iis_f, exponentiate = TRUE)
+tbl_iis_f
+
+```
+
+
+```{r}
+#Multivariable fragilidad
+
+# Perfil
+modelo_per_f_m <- glm(fragilidad ~ Clase_Latente + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_per_f_m <- tbl_regression(modelo_per_f_m, exponentiate = TRUE)
+tbl_per_f_m 
+
+# Conteo
+modelo_cont_f_m <- glm(fragilidad ~ grupo_enfermedades + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_cont_f_m <- tbl_regression(modelo_cont_f_m, exponentiate = TRUE)
+tbl_cont_f_m
+
+# Indice
+modelo_iis_f_m <- glm(fragilidad ~ grupo_iis + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_iis_f_m <- tbl_regression(modelo_iis_f_m, exponentiate = TRUE)
+tbl_iis_f_m
+
+```
+
+
+## Calibracion
+
+```{r}
+#Perfiles
+df_modelos$prob_predicha_per_f_m <- predict(modelo_per_f_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_per_f_m, df_modelos$fragilidad, m = 10, cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$fragilidad, df_modelos$prob_predicha_per_f_m, g = 10)
+
+#Conteo
+df_modelos$prob_predicha_cont_f_m <- predict(modelo_cont_f_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_cont_f_m, df_modelos$fragilidad, m = 10, cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$fragilidad, df_modelos$prob_predicha_cont_f_m, g = 10)
+
+#índice
+df_modelos$prob_predicha_iis_f_m <- predict(modelo_iis_f_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_iis_f_m, df_modelos$fragilidad, m = 10, cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$fragilidad, df_modelos$prob_predicha_iis_f_m, g = 10)
+```
+
+```{r}
+get_calib_data <- function(probs, outcome, model_name) {
+  data.frame(
+    prob = probs,
+    outcome = outcome,
+    model = model_name
+  )
+}
+
+# ==== Preparar datos de calibración ====
+
+calib_perfiles <- get_calib_data(df_modelos$prob_predicha_per_f_m, df_modelos$fragilidad, "Perfiles")
+calib_conteo   <- get_calib_data(df_modelos$prob_predicha_cont_f_m, df_modelos$fragilidad, "Conteo")
+calib_indice   <- get_calib_data(df_modelos$prob_predicha_iis_f_m, df_modelos$fragilidad, "Índice")
+
+# Combinar todos los datos
+calib_all <- bind_rows(calib_perfiles, calib_conteo, calib_indice)
+
+# ==== Graficar curvas de calibración ====
+
+ggplot(calib_all, aes(x = prob, y = outcome, color = model)) +
+  geom_smooth(method = "loess", se = FALSE, span = 0.8, size = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_color_manual(values = c(
+    "Perfiles" = "#003399",   # Azul rey
+    "Conteo"   = "#8B0000",   # Rojo oscuro
+    "Índice"   = "#006400"    # Verde oscuro
+  )) +
+  labs(
+    title = "Curvas de calibración suavizadas (fragilidad)",
+    x = "Probabilidad predicha",
+    y = "Proporción observada"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.title = element_blank(),
+    text = element_text(size = 12)
+  )
+
+
+
+```
+
+
+
+## Nagelkerke
+```{r}
+library(rcompanion)
+nagelkerke(modelo_per_f_m)
+nagelkerke(modelo_cont_f_m)
+nagelkerke(modelo_iis_f_m)
+```
+
+
+##curvas ROC
+```{r}
+
+# Curva 1
+roc_per_f_m <- roc(df_modelos$fragilidad, modelo_per_f_m$fitted.values)
+ci.auc(roc_per_f_m)
+plot(roc_per_f_m,
+     legacy.axes = TRUE,
+     percent = TRUE,
+     ylab = "Sensibilidad",
+     xlab = "1 - Especificidad",
+     col = "darkblue", lwd = 2, grid = TRUE)
+
+# Curva 2 (añadida a la misma gráfica)
+roc_cont_f_m <- roc(df_modelos$fragilidad, modelo_cont_f_m$fitted.values)
+ci.auc(roc_cont_f_m)
+plot(roc_cont_f_m, add = TRUE, col = "darkred", lwd = 2)
+
+# Curva 3 (añadida a la misma gráfica)
+roc_iis_f_m <- roc(df_modelos$fragilidad, modelo_iis_f_m$fitted.values)
+ci.auc(roc_iis_f_m)
+plot(roc_iis_f_m, add = TRUE, col = "darkgreen", lwd = 2)
+
+# Agregar leyenda
+legend("bottomright",
+       legend = c(
+         paste0("Modelo Perfiles (AUC = ", format(auc(roc_per_f_m), digits = 3), "%)"),
+         paste0("Modelo Conteo (AUC = ", format(auc(roc_cont_f_m), digits = 3), "%)"),
+         paste0("Modelo Índice (AUC = ", format(auc(roc_iis_f_m), digits = 3), "%)")
+       ),
+       col = c("darkblue", "darkred", "darkgreen"),
+       lwd = 2)
+
+```
+
+
+## Curvas de decision
+```{r}
+#Multivariable
+# Perfiles
+
+dca_per_f_m <- dca(fragilidad ~ prob_predicha_per_f_m, 
+    data = df_modelos, 
+    thresholds = seq(0.10, 0.30, by = 0.01))
+    
+plot(dca_per_f_m, smooth = TRUE)
+
+bn_per_f_m <- dca_per_f_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.30, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_f_m
+
+# Conteo
+
+dca_cont_f_m <- dca(fragilidad ~ prob_predicha_cont_f_m, 
+    data = df_modelos, 
+    thresholds = seq(0.10, 0.30, by = 0.01))
+    
+plot(dca_cont_f_m, smooth = TRUE)
+
+bn_cont_f_m <- dca_cont_f_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.30, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_f_m
+
+# Indice
+
+dca_iis_f_m <- dca(fragilidad ~ prob_predicha_iis_f_m, 
+    data = df_modelos, 
+    thresholds = seq(0.10, 0.30, by = 0.01))
+    
+plot(dca_iis_f_m, smooth = TRUE)
+
+bn_iis_f_m <- dca_iis_f_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.30, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_f_m
+
+# Grafico en conjunto
+
+dca_fragilidad <- dca(fragilidad ~ prob_predicha_per_f_m + prob_predicha_cont_f_m + prob_predicha_iis_f_m, 
+    data = df_modelos, 
+    thresholds = seq(0.10, 0.30, by = 0.01))
+
+plot(dca_fragilidad, smooth = TRUE)
+
+
+## Tabla
+
+tabla_bn_f_m <- dca_fragilidad %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.10, 0.30, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+tabla_bn_f_m
+
+tabla_bn_f_m <- tabla_bn_f_m %>%
+  mutate(
+    delta_per_vs_todos = prob_predicha_per_f_m - all,
+    delta_cont_vs_todos = prob_predicha_cont_f_m - all,
+    delta_iis_vs_todos = prob_predicha_iis_f_m - all
+  )
+
+tabla_bn_f_m
+```
+
+
+```{r}
+# Crear objeto dca
+dca_fragilidad <- dca(fragilidad ~ prob_predicha_per_f_m + prob_predicha_cont_f_m + prob_predicha_iis_f_m, 
+                      data = df_modelos, 
+                      thresholds = seq(0.10, 0.30, by = 0.01))
+
+# Convertir resultados a tibble y etiquetar variables
+df_dca_f <- as_tibble(dca_fragilidad) %>%
+  mutate(variable_label = case_when(
+    variable == "prob_predicha_per_f_m"  ~ "Perfiles",
+    variable == "prob_predicha_cont_f_m" ~ "Conteo",
+    variable == "prob_predicha_iis_f_m"  ~ "Índice",
+    variable == "all" ~ "Tratar a todos",
+    variable == "none" ~ "Tratar a nadie"
+  ))
+
+# Graficar
+ggplot(df_dca_f, aes(x = threshold, y = net_benefit, color = variable_label)) +
+  geom_smooth(se = FALSE, method = "loess", span = 0.3, linewidth = 1) +
+  scale_color_manual(
+    values = c(
+      "Perfiles" = "#003399",
+      "Conteo" = "#8B0000",
+      "Índice" = "#006400",
+      "Tratar a todos" = "black",
+      "Tratar a nadie" = "grey40"
+    )
+  ) +
+  coord_cartesian(ylim = c(-0.05, NA)) +
+  labs(
+    title = "Curvas de beneficio neto (DCA) - Fragilidad",
+    x = "Umbral de probabilidad",
+    y = "Beneficio neto",
+    color = NULL
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 12))
+```
+
+
+# Marcha
+
+```{r}
+table(datos_2$grupo_iis, datos_2$marcha_alterada)
+table(datos_2$grupo_enfermedades, datos_2$marcha_alterada)
+table(datos_2$Clase_Latente, datos_2$marcha_alterada)
+```
+
+
+
+```{r}
+#Univariados Marcha
+
+# Perfil
+modelo_per_ma <- glm(marcha_alterada ~ Clase_Latente, data = df_modelos, family = binomial)
+tbl_per_ma <- tbl_regression(modelo_per_ma, exponentiate = TRUE)
+tbl_per_ma 
+
+# Conteo
+modelo_cont_ma <- glm(marcha_alterada ~ grupo_enfermedades, data = df_modelos, family = binomial)
+tbl_cont_ma <- tbl_regression(modelo_cont_ma, exponentiate = TRUE)
+tbl_cont_ma
+
+# Indice
+modelo_iis_ma <- glm(marcha_alterada ~ grupo_iis, data = df_modelos, family = binomial)
+tbl_iis_ma <- tbl_regression(modelo_iis_ma, exponentiate = TRUE)
+tbl_iis_ma
+
+```
+
+
+```{r}
+#Multivariable marcha
+
+# Perfil
+modelo_per_ma_m <- glm(marcha_alterada ~ Clase_Latente + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_per_ma_m <- tbl_regression(modelo_per_ma_m, exponentiate = TRUE)
+tbl_per_ma_m 
+
+# Conteo
+modelo_cont_ma_m <- glm(marcha_alterada ~ grupo_enfermedades + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_cont_ma_m <- tbl_regression(modelo_cont_ma_m, exponentiate = TRUE)
+tbl_cont_ma_m
+
+# Indice
+modelo_iis_ma_m <- glm(marcha_alterada ~ grupo_iis + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_iis_ma_m <- tbl_regression(modelo_iis_ma_m, exponentiate = TRUE)
+tbl_iis_ma_m
+
+```
+
+
+## Calibracion
+
+```{r}
+#Perfiles
+df_modelos$prob_predicha_per_ma_m <- predict(modelo_per_ma_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_per_ma_m, df_modelos$marcha_alterada, m = 10, cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$marcha_alterada, df_modelos$prob_predicha_per_ma_m, g = 10)
+
+#Conteo
+df_modelos$prob_predicha_cont_ma_m <- predict(modelo_cont_ma_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_cont_ma_m, df_modelos$marcha_alterada, m = 10, cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$marcha_alterada, df_modelos$prob_predicha_cont_ma_m, g = 10)
+
+#índice
+df_modelos$prob_predicha_iis_ma_m <- predict(modelo_iis_ma_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_iis_ma_m, df_modelos$marcha_alterada, m = 10, cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$marcha_alterada, df_modelos$prob_predicha_iis_ma_m, g = 10)
+```
+
+
+```{r}
+# ==== Preparar datos de calibración ====
+
+calib_perfiles <- get_calib_data(df_modelos$prob_predicha_per_ma_m, df_modelos$marcha_alterada, "Perfiles")
+calib_conteo   <- get_calib_data(df_modelos$prob_predicha_cont_ma_m, df_modelos$marcha_alterada, "Conteo")
+calib_indice   <- get_calib_data(df_modelos$prob_predicha_iis_ma_m, df_modelos$marcha_alterada, "Índice")
+
+# Combinar todos los datos
+calib_all <- bind_rows(calib_perfiles, calib_conteo, calib_indice)
+
+# ==== Graficar curvas de calibración ====
+
+ggplot(calib_all, aes(x = prob, y = outcome, color = model)) +
+  geom_smooth(method = "loess", se = FALSE, span = 0.8, linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_color_manual(values = c(
+    "Perfiles" = "#003399",   # Azul rey
+    "Conteo"   = "#8B0000",   # Rojo oscuro
+    "Índice"   = "#006400"    # Verde oscuro
+  )) +
+  labs(
+    title = "Curvas de calibración suavizadas (marcha alterada)",
+    x = "Probabilidad predicha",
+    y = "Proporción observada"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.title = element_blank(),
+    text = element_text(size = 12)
+  )
+```
+
+
+## Nagelkerke
+```{r}
+library(rcompanion)
+nagelkerke(modelo_per_ma_m)
+nagelkerke(modelo_cont_ma_m)
+nagelkerke(modelo_iis_ma_m)
+```
+
+
+
+##curvas ROC
+```{r}
+
+# Curva 1
+roc_per_ma_m <- roc(df_modelos$marcha_alterada, modelo_per_ma_m$fitted.values)
+ci.auc(roc_per_ma_m)
+plot(roc_per_ma_m,
+     legacy.axes = TRUE,
+     percent = TRUE,
+     ylab = "Sensibilidad",
+     xlab = "1 - Especificidad",
+     col = "darkblue", lwd = 2, grid = TRUE)
+
+# Curva 2 (añadida a la misma gráfica)
+roc_cont_ma_m <- roc(df_modelos$marcha_alterada, modelo_cont_ma_m$fitted.values)
+ci.auc(roc_cont_ma_m)
+plot(roc_cont_ma_m, add = TRUE, col = "darkred", lwd = 2)
+
+# Curva 3 (añadida a la misma gráfica)
+roc_iis_ma_m <- roc(df_modelos$marcha_alterada, modelo_iis_ma_m$fitted.values)
+ci.auc(roc_iis_ma_m)
+plot(roc_iis_ma_m, add = TRUE, col = "darkgreen", lwd = 2)
+
+# Agregar leyenda
+legend("bottomright",
+       legend = c(
+         paste0("Modelo Perfiles (AUC = ", format(auc(roc_per_ma_m), digits = 3), "%)"),
+         paste0("Modelo Conteo (AUC = ", format(auc(roc_cont_ma_m), digits = 3), "%)"),
+         paste0("Modelo Índice (AUC = ", format(auc(roc_iis_ma_m), digits = 3), "%)")
+       ),
+       col = c("darkblue", "darkred", "darkgreen"),
+       lwd = 2)
+
+```
+
+
+## Curvas de decision
+```{r}
+#Multivariable
+# Perfiles
+
+dca_per_ma_m <- dca(marcha_alterada ~ prob_predicha_per_ma_m, 
+    data = df_modelos, 
+    thresholds = seq(0, 0.20, by = 0.01))
+    
+plot(dca_per_ma_m, smooth = TRUE)
+
+bn_per_ma_m <- dca_per_ma_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.20, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_ma_m
+
+# Conteo
+
+dca_cont_ma_m <- dca(marcha_alterada ~ prob_predicha_cont_ma_m, 
+    data = df_modelos, 
+    thresholds = seq(0, 0.20, by = 0.01))
+    
+plot(dca_cont_ma_m, smooth = TRUE)
+
+bn_cont_ma_m <- dca_cont_ma_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.20, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_ma_m
+
+# Indice
+
+dca_iis_ma_m <- dca(marcha_alterada ~ prob_predicha_iis_ma_m, 
+    data = df_modelos, 
+    thresholds = seq(0, 0.20, by = 0.01))
+    
+plot(dca_iis_ma_m, smooth = TRUE)
+
+bn_iis_ma_m <- dca_iis_ma_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.20, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_ma_m
+
+# Grafico en conjunto
+
+dca_marcha <- dca(marcha_alterada ~ prob_predicha_per_ma_m + prob_predicha_cont_ma_m + prob_predicha_iis_ma_m, 
+    data = df_modelos, 
+    thresholds = seq(0, 0.20, by = 0.01))
+
+plot(dca_marcha, smooth = TRUE)
+
+
+## Tabla
+
+tabla_bn_ma_m <- dca_marcha %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0, 0.20, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+tabla_bn_ma_m
+
+tabla_bn_ma_m <- tabla_bn_ma_m %>%
+  mutate(
+    delta_per_vs_todos = prob_predicha_per_ma_m - all,
+    delta_cont_vs_todos = prob_predicha_cont_ma_m - all,
+    delta_iis_vs_todos = prob_predicha_iis_ma_m - all
+  )
+
+tabla_bn_ma_m
+```
+
+```{r}
+# Crear objeto dca
+dca_marcha <- dca(marcha_alterada ~ prob_predicha_per_ma_m + prob_predicha_cont_ma_m + prob_predicha_iis_ma_m, 
+                  data = df_modelos, 
+                  thresholds = seq(0, 0.20, by = 0.01))
+
+# Convertir resultados a tibble y etiquetar variables
+df_dca_ma <- as_tibble(dca_marcha) %>%
+  mutate(variable_label = case_when(
+    variable == "prob_predicha_per_ma_m"  ~ "Perfiles",
+    variable == "prob_predicha_cont_ma_m" ~ "Conteo",
+    variable == "prob_predicha_iis_ma_m"  ~ "Índice",
+    variable == "all" ~ "Tratar a todos",
+    variable == "none" ~ "Tratar a nadie"
+  ))
+
+# Graficar
+ggplot(df_dca_ma, aes(x = threshold, y = net_benefit, color = variable_label)) +
+  geom_smooth(se = FALSE, method = "loess", span = 0.3, linewidth = 1) +
+  scale_color_manual(
+    values = c(
+      "Perfiles" = "#003399",
+      "Conteo" = "#8B0000",
+      "Índice" = "#006400",
+      "Tratar a todos" = "black",
+      "Tratar a nadie" = "grey40"
+    )
+  ) +
+  coord_cartesian(ylim = c(-0.025, NA)) +
+  labs(
+    title = "Curvas de beneficio neto (DCA) - Marcha alterada",
+    x = "Umbral de probabilidad",
+    y = "Beneficio neto",
+    color = NULL
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 12))
+
+```
+
+
+
+## Apoyo
+```{r}
+table(datos_2$grupo_iis, datos_2$apoyo_alterado)
+table(datos_2$grupo_enfermedades, datos_2$apoyo_alterado)
+table(datos_2$Clase_Latente, datos_2$apoyo_alterado)
+```
+
+
+```{r}
+#Univariados apoyo
+
+# Perfil
+modelo_per_a <- glm(apoyo_alterado ~ Clase_Latente, data = df_modelos, family = binomial)
+tbl_per_a <- tbl_regression(modelo_per_a, exponentiate = TRUE)
+tbl_per_a 
+
+# Conteo
+modelo_cont_a <- glm(apoyo_alterado ~ grupo_enfermedades, data = df_modelos, family = binomial)
+tbl_cont_a <- tbl_regression(modelo_cont_a, exponentiate = TRUE)
+tbl_cont_a
+
+# Indice
+modelo_iis_a <- glm(apoyo_alterado ~ grupo_iis, data = df_modelos, family = binomial)
+tbl_iis_a <- tbl_regression(modelo_iis_a, exponentiate = TRUE)
+tbl_iis_a
+
+```
+
+
+```{r}
+#Multivariable Apoyo
+
+# Perfil
+modelo_per_a_m <- glm(apoyo_alterado ~ Clase_Latente + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_per_a_m <- tbl_regression(modelo_per_a_m, exponentiate = TRUE)
+tbl_per_a_m 
+
+# Conteo
+modelo_cont_a_m <- glm(apoyo_alterado ~ grupo_enfermedades + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_cont_a_m <- tbl_regression(modelo_cont_a_m, exponentiate = TRUE)
+tbl_cont_a_m
+
+# Indice
+modelo_iis_a_m <- glm(apoyo_alterado ~ grupo_iis + edad + sexo + adherente_total, data = df_modelos, family = binomial)
+tbl_iis_a_m <- tbl_regression(modelo_iis_a_m, exponentiate = TRUE)
+tbl_iis_a_m
+
+```
+
+
+
+## Calibracion
+
+```{r}
+#Perfiles
+df_modelos$prob_predicha_per_a_m <- predict(modelo_per_a_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_per_a_m, df_modelos$apoyo_alterado, m = 10, cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$apoyo_alterado, df_modelos$prob_predicha_per_a_m, g = 10)
+
+#Conteo
+df_modelos$prob_predicha_cont_a_m <- predict(modelo_cont_a_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_cont_a_m, df_modelos$apoyo_alterado, m = 10, cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$apoyo_alterado, df_modelos$prob_predicha_cont_a_m, g = 10)
+
+#índice
+df_modelos$prob_predicha_iis_a_m <- predict(modelo_iis_a_m, type = "response")
+
+# Curva de calibración
+val.prob(df_modelos$prob_predicha_iis_a_m, df_modelos$apoyo_alterado, m = 10, cex = 0.8, statloc = FALSE)
+
+hoslem.test(df_modelos$apoyo_alterado, df_modelos$prob_predicha_iis_a_m, g = 10)
+```
+
+```{r}
+calib_perfiles <- get_calib_data(df_modelos$prob_predicha_per_a_m, df_modelos$apoyo_alterado, "Perfiles")
+calib_conteo   <- get_calib_data(df_modelos$prob_predicha_cont_a_m, df_modelos$apoyo_alterado, "Conteo")
+calib_indice   <- get_calib_data(df_modelos$prob_predicha_iis_a_m, df_modelos$apoyo_alterado, "Índice")
+
+# Combinar en un único dataframe
+calib_all <- bind_rows(calib_perfiles, calib_conteo, calib_indice)
+
+# ==== Graficar ====
+
+ggplot(calib_all, aes(x = prob, y = outcome, color = model)) +
+  geom_smooth(method = "loess", se = FALSE, span = 0.8, linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_color_manual(values = c(
+    "Perfiles" = "#003399",   # Azul rey
+    "Conteo"   = "#8B0000",   # Rojo oscuro
+    "Índice"   = "#006400"    # Verde oscuro
+  )) +
+  labs(
+    title = "Curvas de calibración suavizadas (apoyo monopodal alterado)",
+    x = "Probabilidad predicha",
+    y = "Proporción observada"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.title = element_blank(),
+    text = element_text(size = 12)
+  )
+```
+
+
+
+## Nagelkerke
+```{r}
+nagelkerke(modelo_per_a_m)
+nagelkerke(modelo_cont_a_m)
+nagelkerke(modelo_iis_a_m)
+```
+
+
+##curvas ROC
+```{r}
+
+# Curva 1
+roc_per_a_m <- roc(df_modelos$apoyo_alterado, modelo_per_a_m$fitted.values)
+ci.auc(roc_per_a_m)
+plot(roc_per_a_m,
+     legacy.axes = TRUE,
+     percent = TRUE,
+     ylab = "Sensibilidad",
+     xlab = "1 - Especificidad",
+     col = "darkblue", lwd = 2, grid = TRUE)
+
+# Curva 2 (añadida a la misma gráfica)
+roc_cont_a_m <- roc(df_modelos$apoyo_alterado, modelo_cont_a_m$fitted.values)
+ci.auc(roc_cont_a_m)
+plot(roc_cont_a_m, add = TRUE, col = "darkred", lwd = 2)
+
+# Curva 3 (añadida a la misma gráfica)
+roc_iis_a_m <- roc(df_modelos$apoyo_alterado, modelo_iis_a_m$fitted.values)
+ci.auc(roc_iis_a_m)
+plot(roc_iis_a_m, add = TRUE, col = "darkgreen", lwd = 2)
+
+# Agregar leyenda
+legend("bottomright",
+       legend = c(
+         paste0("Modelo Perfiles (AUC = ", format(auc(roc_per_a_m), digits = 3), "%)"),
+         paste0("Modelo Conteo (AUC = ", format(auc(roc_cont_a_m), digits = 3), "%)"),
+         paste0("Modelo Índice (AUC = ", format(auc(roc_iis_a_m), digits = 3), "%)")
+       ),
+       col = c("darkblue", "darkred", "darkgreen"),
+       lwd = 2)
+
+```
+
+
+## Curvas de decision
+```{r}
+#Multivariable
+# Perfiles
+
+dca_per_a_m <- dca(apoyo_alterado ~ prob_predicha_per_a_m, 
+    data = df_modelos, 
+    thresholds = seq(0.60, 0.80, by = 0.01))
+    
+plot(dca_per_a_m, smooth = TRUE)
+
+bn_per_a_m <- dca_per_a_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.60, 0.80, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_per_a_m
+
+# Conteo
+
+dca_cont_a_m <- dca(apoyo_alterado ~ prob_predicha_cont_a_m, 
+    data = df_modelos, 
+    thresholds = seq(0.60, 0.80, by = 0.01))
+    
+plot(dca_cont_a_m, smooth = TRUE)
+
+bn_cont_a_m <- dca_cont_a_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.60, 0.80, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_cont_a_m
+
+# Indice
+
+dca_iis_a_m <- dca(apoyo_alterado ~ prob_predicha_iis_a_m, 
+    data = df_modelos, 
+    thresholds = seq(0.60, 0.80, by = 0.01))
+    
+plot(dca_iis_a_m, smooth = TRUE)
+
+bn_iis_a_m <- dca_iis_a_m %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.60, 0.80, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+bn_iis_a_m
+
+# Grafico en conjunto
+
+dca_apoyo <- dca(apoyo_alterado ~ prob_predicha_per_a_m + prob_predicha_cont_a_m + prob_predicha_iis_a_m, 
+    data = df_modelos, 
+    thresholds = seq(0.60, 0.80, by = 0.01))
+
+plot(dca_apoyo, smooth = TRUE)
+
+
+## Tabla
+
+tabla_bn_a_m <- dca_apoyo %>%
+  as_tibble() %>%
+  filter(threshold %in% seq(0.60, 0.80, by = 0.01)) %>%
+  select(variable, threshold, net_benefit) %>%
+  pivot_wider(id_cols = threshold, 
+              names_from = variable,
+              values_from = net_benefit)
+
+tabla_bn_a_m
+
+tabla_bn_a_m <- tabla_bn_a_m %>%
+  mutate(
+    delta_per_vs_todos = prob_predicha_per_a_m - all,
+    delta_cont_vs_todos = prob_predicha_cont_a_m - all,
+    delta_iis_vs_todos = prob_predicha_iis_a_m - all
+  )
+
+tabla_bn_a_m
+```
+
+
+```{r}
+# Crear objeto dca
+dca_apoyo <- dca(apoyo_alterado ~ prob_predicha_per_a_m + prob_predicha_cont_a_m + prob_predicha_iis_a_m, 
+                 data = df_modelos, 
+                 thresholds = seq(0.60, 0.80, by = 0.01))
+
+# Convertir resultados a tibble y etiquetar variables
+df_dca_apoyo <- as_tibble(dca_apoyo) %>%
+  mutate(variable_label = case_when(
+    variable == "prob_predicha_per_a_m"  ~ "Perfiles",
+    variable == "prob_predicha_cont_a_m" ~ "Conteo",
+    variable == "prob_predicha_iis_a_m"  ~ "Índice",
+    variable == "all" ~ "Tratar a todos",
+    variable == "none" ~ "Tratar a nadie"
+  ))
+
+# Graficar
+ggplot(df_dca_apoyo, aes(x = threshold, y = net_benefit, color = variable_label)) +
+  geom_smooth(se = FALSE, method = "loess", span = 0.3, linewidth = 1) +
+  scale_color_manual(
+    values = c(
+      "Perfiles" = "#003399",
+      "Conteo" = "#8B0000",
+      "Índice" = "#006400",
+      "Tratar a todos" = "black",
+      "Tratar a nadie" = "grey40"
+    )
+  ) +
+  coord_cartesian(ylim = c(-0.05, NA)) +
+  labs(
+    title = "Curvas de beneficio neto (DCA) - Apoyo monopodal alterado",
+    x = "Umbral de probabilidad",
+    y = "Beneficio neto",
+    color = NULL
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 12))
+
+```
+
+
+# bibliography: grateful-refs.bib
+
+```{r}
+library(grateful)
+cite_packages(output = "paragraph", out.dir = tempdir())
+```
+

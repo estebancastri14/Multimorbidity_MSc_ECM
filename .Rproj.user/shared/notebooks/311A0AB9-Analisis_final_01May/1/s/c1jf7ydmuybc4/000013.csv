@@ -1,0 +1,5 @@
+"0",""
+"0","# Conteo"
+"0","modelo_cont_f <- glm(fragilidad ~ grupo_enfermedades, data = df_modelos, family = binomial)"
+"0","tbl_cont_f <- tbl_regression(modelo_cont_f, exponentiate = TRUE)"
+"0","tbl_cont_f"

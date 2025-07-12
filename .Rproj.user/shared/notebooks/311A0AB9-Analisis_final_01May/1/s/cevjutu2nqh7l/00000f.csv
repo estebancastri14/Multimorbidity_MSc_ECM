@@ -1,0 +1,6 @@
+"0","#Multivariable control"
+"0",""
+"0","# Perfil"
+"0","modelo_per_m <- glm(controlado ~ Clase_Latente + edad + sexo + adherente_total, data = df_modelos, family = binomial)"
+"0","tbl_per_m <- tbl_regression(modelo_per_m, exponentiate = TRUE)"
+"0","tbl_per_m "

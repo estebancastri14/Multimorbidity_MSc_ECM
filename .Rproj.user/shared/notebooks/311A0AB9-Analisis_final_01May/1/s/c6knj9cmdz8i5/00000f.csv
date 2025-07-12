@@ -1,0 +1,16 @@
+"0","library(dcurves)"
+"2","Warning:"
+"2"," package ‘dcurves’ was built under R version 4.3.3
+"
+"0","library(gtsummary); library(dplyr); library(tidyr)"
+"0",""
+"0","#Multivariable"
+"0","# Perfiles"
+"0",""
+"0","dca_per_c <- dca(controlado ~ prob_predicha_per_m, "
+"0","    data = df_modelos, "
+"0","    thresholds = seq(0.20, 0.40, by = 0.01))"
+"2","Assuming '1' is [Event] and '0' is [non-Event]
+"
+"0","    "
+"0","plot(dca_per_c, smooth = TRUE)"

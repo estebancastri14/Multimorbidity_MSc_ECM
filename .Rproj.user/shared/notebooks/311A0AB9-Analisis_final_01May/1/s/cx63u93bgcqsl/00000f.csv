@@ -1,0 +1,6 @@
+"0","#Univariados Marcha"
+"0",""
+"0","# Perfil"
+"0","modelo_per_ma <- glm(marcha_alterada ~ Clase_Latente, data = df_modelos, family = binomial)"
+"0","tbl_per_ma <- tbl_regression(modelo_per_ma, exponentiate = TRUE)"
+"0","tbl_per_ma "

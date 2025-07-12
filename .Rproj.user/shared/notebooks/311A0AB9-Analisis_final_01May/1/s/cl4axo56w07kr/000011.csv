@@ -1,0 +1,23 @@
+"0",""
+"0","# Curva 2 (añadida a la misma gráfica)"
+"0","roc_cont_ma_m <- roc(df_modelos$marcha_alterada, modelo_cont_ma_m$fitted.values)"
+"2","Setting levels: control = 0, case = 1
+"
+"2","Setting direction: controls < cases
+"
+"0","ci.auc(roc_cont_ma_m)"
+"1","95"
+"1",""
+"1","% CI: "
+"1","0.4591"
+"1",""
+"1",""
+"1",""
+"1","-"
+"1",""
+"1","0.618"
+"1",""
+"1",""
+"1"," (DeLong)
+"
+"0","plot(roc_cont_ma_m, add = TRUE, col = ""darkred"", lwd = 2)"

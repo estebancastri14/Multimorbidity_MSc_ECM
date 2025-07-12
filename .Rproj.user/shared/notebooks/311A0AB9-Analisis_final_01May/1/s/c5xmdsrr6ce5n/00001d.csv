@@ -1,0 +1,2 @@
+"0","library(grateful)"
+"0","cite_packages(output = ""paragraph"", out.dir = tempdir())"
